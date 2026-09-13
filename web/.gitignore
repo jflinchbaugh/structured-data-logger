@@ -1,0 +1,11 @@
+node_modules/
+.shadow-cljs/
+out/
+public/js/
+public/index.html
+src/main/structured_data_logger/version.cljs
+
+.cpcache/
+.nrepl-port
+*.log
+.DS_Store

@@ -1,0 +1,6 @@
+.cpcache/
+.nrepl-port
+*.log
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: structured-data-logger-xtdb
+spec:
+  restartPolicy: on-failure
+  containers:
+    - name: xtdb
+      image: ghcr.io/xtdb/xtdb:2.1.0
+      ports:
+        - containerPort: 5432
+          hostIp: 127.0.0.1
+          hostPort: 5432
+      volumeMounts:
+        - mountPath: /var/lib/xtdb
+          name: xtdb-data
+  volumes:
+    - name: xtdb-data
+      persistentVolumeClaim:
+        claimName: structured-data-logger-xtdb-data
