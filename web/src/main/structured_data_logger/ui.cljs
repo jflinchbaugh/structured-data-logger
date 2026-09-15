@@ -74,8 +74,7 @@
                 {:key (name k) :val (str v)})))
         [new-key-name set-new-key-name] (hooks/use-state "")
         [new-key-val set-new-key-val] (hooks/use-state "")
-        recent-k (core/recent-keys all-entries)
-        common-k (core/common-keys all-entries)
+        blended-k (core/blended-keys all-entries)
         all-k (core/all-known-keys all-entries)
         new-key-vals (if (str/blank? new-key-name)
                        []
@@ -170,27 +169,14 @@
             (set-new-key-val ""))}
         "+ Add"))
 
-      (when (seq recent-k)
+      (when (seq blended-k)
         (d/div
          (d/span {:style {:fontSize "0.8rem" :color "var(--muted)"}}
-                 "Recently used keys:")
+                 "Suggested keys:")
          (d/div
           {:class "chip-row"}
-          (for [k (take 6 recent-k)]
-            (d/span {:key (str "rec-" k)
-                     :class "chip"
-                     :on-click #(set-new-key-name (name k))}
-                    (name k))))))
-
-      (when (seq common-k)
-        (d/div
-         {:style {:marginTop "8px"}}
-         (d/span {:style {:fontSize "0.8rem" :color "var(--muted)"}}
-                 "Frequently used keys:")
-         (d/div
-          {:class "chip-row"}
-          (for [k (take 6 common-k)]
-            (d/span {:key (str "com-" k)
+          (for [k (take 10 blended-k)]
+            (d/span {:key (str "key-" k)
                      :class "chip"
                      :on-click #(set-new-key-name (name k))}
                     (name k))))))

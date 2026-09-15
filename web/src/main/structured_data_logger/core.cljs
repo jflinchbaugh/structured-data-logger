@@ -59,6 +59,15 @@
          (map first)
          vec)))
 
+(defn blended-keys
+  "Returns a blended list of recent and frequently used keys."
+  [entries]
+  (let [r (recent-keys entries)
+        c (common-keys entries)
+        n (min (count r) (count c))
+        interleaved (interleave (take n r) (take n c))]
+    (vec (distinct (concat interleaved r c)))))
+
 (defn recent-values
   "Returns values for key k ordered by most recent occurrence."
   [entries k]
@@ -128,6 +137,7 @@
                         'intervals intervals
                         'recent-keys recent-keys
                         'common-keys common-keys
+                        'blended-keys blended-keys
                         'recent-values recent-values
                         'common-values common-values
                         'all-known-keys all-known-keys

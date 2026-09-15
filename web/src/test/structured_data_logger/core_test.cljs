@@ -49,7 +49,13 @@
 
     (testing "all-known-values returns string values for key"
       (is (= ["oatmeal" "salad"]
-             (sut/all-known-values sample-entries :food))))))
+             (sut/all-known-values sample-entries :food))))
+
+    (testing "blended-keys blends recent and frequently used keys"
+      (let [blended (sut/blended-keys sample-entries)]
+        (is (vector? blended))
+        (is (= (set [:food :pills :calories :mood]) (set blended)))
+        (is (= :food (first blended)))))))
 
 (deftest stats-and-sci-test
   (let [numbers [10 20 30 40 50]]
