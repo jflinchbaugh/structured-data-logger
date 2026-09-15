@@ -415,7 +415,7 @@
       (d/div
        {:class "container"}
        (d/header
-        (d/h1 "Structured Data Logger")
+        (d/h1 "Structured Data Journal")
         (d/div
          (if (seq pending-changes)
            (d/span {:class "badge"
