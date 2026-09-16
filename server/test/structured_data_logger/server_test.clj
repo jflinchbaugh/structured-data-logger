@@ -12,14 +12,14 @@
 
 (deftest ping-endpoint-test
   (testing "Ping endpoint returns 200 pong"
-    (let [req (mock/request :get "/storage/api/ping")
+    (let [req (mock/request :get "/journal/api/ping")
           resp (sut/app req)]
       (is (= 200 (:status resp)))
       (is (= "pong" (:body resp))))))
 
 (deftest auth-and-registration-test
   (testing "User registration and authentication"
-    (let [reg-req (-> (mock/request :post "/storage/api/register")
+    (let [reg-req (-> (mock/request :post "/journal/api/register")
                       (mock/json-body {:id "alice"
                                        :login "alice"
                                        :password "secret123"}))
@@ -28,19 +28,19 @@
       (is (re-find #"created" (:body reg-resp))))
 
     (testing "Unauthorized access without credentials"
-      (let [req (mock/request :get "/storage/api/document/alice")
+      (let [req (mock/request :get "/journal/api/document/alice")
             resp (sut/app req)]
         (is (= 401 (:status resp)))))
 
     (testing "Unauthorized access with bad credentials"
-      (let [req (-> (mock/request :get "/storage/api/document/alice")
+      (let [req (-> (mock/request :get "/journal/api/document/alice")
                     (mock/header "authorization" "Basic YWxpY2U6d3Jvbmc="))
             resp (sut/app req)]
         (is (= 401 (:status resp)))))
 
     (testing "Authorized access with valid credentials"
       ;; Basic alice:secret123 -> YWxpY2U6c2VjcmV0MTIz
-      (let [req (-> (mock/request :get "/storage/api/document/alice")
+      (let [req (-> (mock/request :get "/journal/api/document/alice")
                     (mock/header "authorization" "Basic YWxpY2U6c2VjcmV0MTIz"))
             resp (sut/app req)]
         (is (= 200 (:status resp)))))))
@@ -60,7 +60,7 @@
                    :description "Trip to market"
                    :data {:mileage 14.2
                           :vehicle "truck"}}
-          sync-req (-> (mock/request :post "/storage/api/sync/bob")
+          sync-req (-> (mock/request :post "/journal/api/sync/bob")
                        (mock/header "authorization" auth-header)
                        (mock/json-body {:changes [entry-1 entry-2]}))
           sync-resp (sut/app sync-req)
@@ -81,7 +81,7 @@
                    :description "Morning walk"
                    :data {:distance 3.2}}
           ;; Client 1 submits put operation
-          c1-req (-> (mock/request :post "/storage/api/sync/carol")
+          c1-req (-> (mock/request :post "/journal/api/sync/carol")
                      (mock/header "authorization" auth)
                      (mock/json-body {:since-tx-id 0
                                       :operations [{:client-tx-id "c1-op1"
@@ -96,7 +96,7 @@
       (is (= 1 (:tx-id (first (:transactions c1-body)))))
 
       ;; Test Idempotency: re-submitting c1-op1 does not duplicate
-      (let [retry-req (-> (mock/request :post "/storage/api/sync/carol")
+      (let [retry-req (-> (mock/request :post "/journal/api/sync/carol")
                           (mock/header "authorization" auth)
                           (mock/json-body {:since-tx-id 1
                                            :operations [{:client-tx-id "c1-op1"
@@ -107,7 +107,7 @@
         (is (empty? (:transactions retry-body))))
 
       ;; Client 2 pulls changes since tx 0
-      (let [c2-pull-req (-> (mock/request :post "/storage/api/sync/carol")
+      (let [c2-pull-req (-> (mock/request :post "/journal/api/sync/carol")
                             (mock/header "authorization" auth)
                             (mock/json-body {:since-tx-id 0
                                              :operations []}))
@@ -118,7 +118,7 @@
         (is (= "e-1" (-> c2-pull-body :transactions first :entry :id))))
 
       ;; Client 2 sends a delete operation
-      (let [c2-del-req (-> (mock/request :post "/storage/api/sync/carol")
+      (let [c2-del-req (-> (mock/request :post "/journal/api/sync/carol")
                            (mock/header "authorization" auth)
                            (mock/json-body {:since-tx-id 1
                                             :operations [{:client-tx-id "c2-op1"
@@ -132,7 +132,7 @@
         (is (= 2 (:tx-id (first (:transactions c2-del-body))))))
 
       ;; Client 1 syncs from tx 1, receives the delete transaction
-      (let [c1-catchup (-> (mock/request :post "/storage/api/sync/carol")
+      (let [c1-catchup (-> (mock/request :post "/journal/api/sync/carol")
                            (mock/header "authorization" auth)
                            (mock/json-body {:since-tx-id 1
                                             :operations []}))

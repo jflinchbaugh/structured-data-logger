@@ -411,7 +411,7 @@
             (go
               (try
                 (let [url (str (core/clean-server-url server-url)
-                               "/storage/api/register")
+                               "/journal/api/register")
                       resp
                       (<! (http/post
                            url
@@ -447,7 +447,7 @@
                         in-flight (or pending-ops [])
                         clean-url (core/clean-server-url (:server-url config))
                         url (str clean-url
-                                 "/storage/api/sync/"
+                                 "/journal/api/sync/"
                                  (:user-id config))
                         resp
                         (<! (http/post

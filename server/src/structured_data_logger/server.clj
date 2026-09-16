@@ -14,7 +14,7 @@
             [tick.core :as t]))
 
 (def ^:const realm "structured-data-logger")
-(def ^:const base-url "/storage")
+(def ^:const base-url "/journal")
 
 (defonce storage (atom {}))
 (defonce server (atom nil))

@@ -61,7 +61,7 @@ java -jar target/structured-data-logger-server-standalone.jar 8000
 ### 1. Health Check (Ping)
 
 ```bash
-curl -s http://localhost:8000/storage/api/ping
+curl -s http://localhost:8000/journal/api/ping
 # Response: pong
 ```
 
@@ -71,7 +71,7 @@ curl -s http://localhost:8000/storage/api/ping
 curl -s -X POST \
   -H 'Content-Type: application/json' \
   -d '{"id":"alice","login":"alice","password":"secret123"}' \
-  http://localhost:8000/storage/api/register
+  http://localhost:8000/journal/api/register
 ```
 
 ### 3. Sync Journal Entries
@@ -85,14 +85,14 @@ curl -s -u alice:secret123 -X POST \
                    "timestamp":"2026-09-14T20:00:00Z",
                    "description":"Jogged 3 miles",
                    "data":{"mileage":3.0,"shoes":"running"}}]}' \
-  http://localhost:8000/storage/api/sync/alice
+  http://localhost:8000/journal/api/sync/alice
 ```
 
 ### 4. Fetch Synced Entries
 
 ```bash
 curl -s -u alice:secret123 \
-  http://localhost:8000/storage/api/document/alice
+  http://localhost:8000/journal/api/document/alice
 ```
 
 ## Running the Server Container
