@@ -387,7 +387,15 @@
                               :user-id "demo"
                               :username "demo"
                               :password "demo"}))
-        [sync-status set-sync-status] (hooks/use-state nil)]
+        [sync-status set-sync-status] (hooks/use-state nil)
+        syncing-ref (hooks/use-ref false)
+        state-ref (hooks/use-ref nil)]
+
+    (set! (.-current state-ref)
+          {:entries entries
+           :pending-ops pending-ops
+           :last-tx-id last-tx-id
+           :config config})
 
     (let [save-local!
           (fn [new-entries new-ops]
@@ -427,43 +435,80 @@
                                         (.-message e)))))))
 
           do-sync!
-          (fn []
-            (set-sync-status "Syncing with backend...")
-            (go
-              (try
-                (let [in-flight pending-ops
-                      url (str (core/clean-server-url (:server-url config))
-                               "/storage/api/sync/"
-                               (:user-id config))
-                      resp
-                      (<! (http/post
-                           url
-                           {:basic-auth {:username (:username config)
-                                         :password (:password config)}
-                            :json-params {:since-tx-id last-tx-id
-                                          :operations in-flight}}))]
-                  (if (= 200 (:status resp))
-                    (let [body (:body resp)
-                          server-last-tx (or (:last-tx-id body) last-tx-id)
-                          server-txs (or (:transactions body) [])
-                          reconciled (core/reconcile-client-state
-                                      {:entries entries
-                                       :pending-ops pending-ops
-                                       :in-flight-ops in-flight
-                                       :received-txs server-txs})]
-                      (set-entries (:entries reconciled))
-                      (set-pending-ops (:pending-ops reconciled))
-                      (set-last-tx-id server-last-tx)
-                      (ls/set-item! :journal-entries (:entries reconciled))
-                      (ls/set-item! :pending-ops (:pending-ops reconciled))
-                      (ls/set-item! :last-tx-id server-last-tx)
-                      (set-sync-status (str "Synced successfully at "
-                                            (core/now-iso-str))))
-                    (set-sync-status (str "Sync failed: status "
-                                          (:status resp)))))
-                (catch :default e
-                  (set-sync-status (str "Sync error: " (.-message e)))))))]
+          (fn [& [status-msg]]
+            (when-not (.-current syncing-ref)
+              (set! (.-current syncing-ref) true)
+              (when status-msg
+                (set-sync-status status-msg))
+              (go
+                (try
+                  (let [{:keys [entries pending-ops last-tx-id config]}
+                        (.-current state-ref)
+                        in-flight (or pending-ops [])
+                        clean-url (core/clean-server-url (:server-url config))
+                        url (str clean-url
+                                 "/storage/api/sync/"
+                                 (:user-id config))
+                        resp
+                        (<! (http/post
+                             url
+                             {:basic-auth {:username (:username config)
+                                           :password (:password config)}
+                              :json-params {:since-tx-id (or last-tx-id 0)
+                                            :operations in-flight}}))]
+                    (if (= 200 (:status resp))
+                      (let [body (:body resp)
+                            server-last-tx (or (:last-tx-id body) last-tx-id)
+                            server-txs (or (:transactions body) [])
+                            cur-pending (or (:pending-ops (.-current state-ref))
+                                            pending-ops)
+                            cur-entries (or (:entries (.-current state-ref))
+                                            entries)
+                            reconciled (core/reconcile-client-state
+                                        {:entries cur-entries
+                                         :pending-ops cur-pending
+                                         :in-flight-ops in-flight
+                                         :received-txs server-txs})]
+                        (set-entries (:entries reconciled))
+                        (set-pending-ops (:pending-ops reconciled))
+                        (set-last-tx-id server-last-tx)
+                        (ls/set-item! :journal-entries (:entries reconciled))
+                        (ls/set-item! :pending-ops (:pending-ops reconciled))
+                        (ls/set-item! :last-tx-id server-last-tx)
+                        (set-sync-status (str "Synced successfully at "
+                                              (core/now-iso-str))))
+                      (set-sync-status (str "Sync failed: status "
+                                            (:status resp)))))
+                  (catch :default e
+                    (set-sync-status (str "Sync error: " (.-message e))))
+                  (finally
+                    (set! (.-current syncing-ref) false))))))]
 
+      ;; 1. Sync on mount / startup
+      (hooks/use-effect
+       :once
+       (do-sync! "Syncing on startup...")
+       nil)
+
+      ;; 2. Sync on browser reconnect and visibility changes
+      (hooks/use-effect
+       :once
+       (let [on-online (fn [] (do-sync! "Syncing on reconnect..."))
+             on-vis (fn []
+                      (when (= (.-visibilityState js/document) "visible")
+                        (do-sync!)))]
+         (.addEventListener js/window "online" on-online)
+         (.addEventListener js/document "visibilitychange" on-vis)
+         (fn []
+           (.removeEventListener js/window "online" on-online)
+           (.removeEventListener js/document "visibilitychange" on-vis))))
+
+      ;; 3. Periodic background sync every 30 seconds
+      (hooks/use-effect
+       :once
+       (let [timer-id (js/setInterval do-sync! 30000)]
+         (fn []
+           (js/clearInterval timer-id))))
 
       (d/div
        {:class "container"}
@@ -526,11 +571,13 @@
                  (d/button
                   {:class "btn btn-danger btn-small"
                    :on-click
-                   #(let [id (:id entry)
-                          del-op (core/create-delete-op id)
-                          updated-entries (core/apply-transaction entries del-op)
-                          updated-ops (conj pending-ops del-op)]
-                      (save-local! updated-entries updated-ops))}
+                   (fn []
+                     (let [id (:id entry)
+                           del-op (core/create-delete-op id)
+                           updated-entries (core/apply-transaction entries del-op)
+                           updated-ops (conj pending-ops del-op)]
+                       (save-local! updated-entries updated-ops)
+                       (js/setTimeout do-sync! 50)))}
                   "Delete")))
                (d/div {:class "entry-desc"} (:description entry))
                (when (seq (:data entry))
@@ -552,7 +599,8 @@
                      updated-ops (conj pending-ops put-op)]
                  (save-local! updated-entries updated-ops)
                  (set-editing-entry nil)
-                 (set-active-tab :entries)))})
+                 (set-active-tab :entries)
+                 (js/setTimeout do-sync! 50)))})
 
          :dashboard
          ($ DashboardView {:entries entries})
