@@ -13,12 +13,12 @@ spec:
     - name: api
       image: localhost/structured-data-logger-server:latest
       ports:
-        - containerPort: 8000
+        - containerPort: 6000
           hostIp: 127.0.0.1
-          hostPort: 8000
+          hostPort: 6000
       env:
         - name: port
-          value: 8000
+          value: 6000
         - name: dbhost
           value: xtdb
   volumes:
