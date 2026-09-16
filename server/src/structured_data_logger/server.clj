@@ -58,6 +58,8 @@
    id
    {:login login
     :password (hashers/derive password)
+    :last-tx-id 0
+    :tx-log []
     :entries []
     :document nil})
   (tel/log! :info (format "Registered '%s' for '%s'" id login)))
@@ -102,7 +104,8 @@
           record (get @storage id)]
       (if-let [doc (:document record)]
         (api-response 200 doc "application/json")
-        (json-response 200 {:entries (or (:entries record) [])})))))
+        (json-response 200 {:entries (or (:entries record) [])
+                            :last-tx-id (or (:last-tx-id record) 0)})))))
 
 (defn upload-handler
   [req]
@@ -113,17 +116,73 @@
       (swap! storage assoc-in [id :document] body-str)
       (api-response 200 body-str "application/json"))))
 
-(defn- merge-entries
-  [existing-entries incoming-changes]
-  (let [by-id (into {} (map (fn [e] [(:id e) e]) existing-entries))
-        merged (reduce
-                (fn [acc change]
-                  (if (:deleted? change)
-                    (dissoc acc (:id change))
-                    (assoc acc (:id change) change)))
-                by-id
-                incoming-changes)]
-    (vec (sort-by :timestamp (vals merged)))))
+(defn- apply-op-to-entries
+  [entries op]
+  (let [op-type (name (or (:op op) "put"))]
+    (case op-type
+      "delete"
+      (let [target-id (or (:id op) (get-in op [:entry :id]))]
+        (vec (remove (fn [e] (= (:id e) target-id)) entries)))
+      "put"
+      (let [entry (:entry op)
+            eid (:id entry)
+            existing-idx (first (keep-indexed
+                                 #(when (= (:id %2) eid) %1)
+                                 entries))]
+        (if existing-idx
+          (assoc entries existing-idx entry)
+          (conj entries entry)))
+      entries)))
+
+(defn- record-transactions!
+  [logger-id new-ops]
+  (let [now-str (str (t/instant))]
+    (swap!
+     storage
+     (fn [store]
+       (let [logger (get store logger-id)
+             tx-log (or (:tx-log logger) [])
+             existing-client-txs (into #{} (keep :client-tx-id tx-log))
+             unseen-ops (remove #(and (:client-tx-id %)
+                                      (existing-client-txs (:client-tx-id %)))
+                                new-ops)
+             start-tx-id (or (:last-tx-id logger) 0)
+             indexed-txs (map-indexed
+                          (fn [idx op]
+                            (let [tid (+ start-tx-id (inc idx))
+                                  op-type (name (or (:op op) "put"))]
+                              (merge op
+                                     {:tx-id tid
+                                      :tx-time now-str
+                                      :op op-type})))
+                          unseen-ops)
+             new-last-tx-id (+ start-tx-id (count unseen-ops))
+             updated-log (into tx-log indexed-txs)
+             updated-entries (reduce apply-op-to-entries
+                                     (or (:entries logger) [])
+                                     indexed-txs)
+             sorted-entries (vec (sort-by :timestamp updated-entries))]
+         (assoc store logger-id
+                (assoc logger
+                       :last-tx-id new-last-tx-id
+                       :tx-log updated-log
+                       :entries sorted-entries)))))
+    nil))
+
+(defn- normalize-ops
+  [payload]
+  (cond
+    (contains? payload :operations)
+    (or (:operations payload) [])
+
+    (contains? payload :changes)
+    (mapv (fn [c]
+            (if (:deleted? c)
+              {:op "delete" :id (:id c)}
+              {:op "put" :entry c}))
+          (:changes payload))
+
+    :else []))
 
 (defn sync-handler
   [req]
@@ -131,14 +190,18 @@
     (not-found)
     (let [id (get-logger-id req)
           payload (parse-json-body req)
-          changes (or (:changes payload) [])
-          curr-entries (get-in @storage [id :entries] [])
-          updated-entries (merge-entries curr-entries changes)
+          since-tx-id (or (:since-tx-id payload) 0)
+          ops (normalize-ops payload)
+          _ (record-transactions! id ops)
+          logger (get @storage id)
+          all-txs (or (:tx-log logger) [])
+          filtered-txs (filterv #(> (:tx-id %) since-tx-id) all-txs)
           now-str (str (t/instant))]
-      (swap! storage assoc-in [id :entries] updated-entries)
       (json-response
        200
-       {:entries updated-entries
+       {:last-tx-id (or (:last-tx-id logger) 0)
+        :transactions filtered-txs
+        :entries (or (:entries logger) [])
         :server-time now-str}))))
 
 (defn unregister-handler
@@ -208,7 +271,9 @@
   (remove-watch storage :to-xtdb)
   (let [node (xt/client {:host db-host})]
     (->>
-     (xt/q node '(from :loggers [_id entries document login password]))
+     (xt/q node
+           '(from :loggers
+                  [_id entries tx-log last-tx-id document login password]))
      (reduce
       (fn [store doc]
         (assoc store (:xt/id doc) (dissoc doc :xt/id)))
@@ -244,6 +309,8 @@
    (if (nil? @server)
      (do
        (when db-host (connect-db db-host))
+       (when (empty? @storage)
+         (register-logger! "demo" "demo" "demo"))
        (reset! server (hks/run-server #'app {:port port}))
        (tel/log! :info (format "Server started on port %d" port)))
      "server already running")))

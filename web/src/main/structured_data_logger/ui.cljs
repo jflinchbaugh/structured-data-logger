@@ -291,15 +291,16 @@
             (d/span {:style {:color "var(--danger)"}} (str "Error: " err))
             (with-out-str (pp/pprint (:result eval-out))))))))))
 
-(defnc SettingsView [{:keys [config on-save-config on-sync sync-status]}]
+(defnc SettingsView
+  [{:keys [config on-save-config on-register on-sync sync-status]}]
   (let [[server-url set-server-url]
-        (hooks/use-state (or (:server-url config) "http://localhost:8000"))
+        (hooks/use-state (or (:server-url config) ""))
         [user-id set-user-id]
-        (hooks/use-state (or (:user-id config) "user1"))
+        (hooks/use-state (or (:user-id config) "demo"))
         [username set-username]
-        (hooks/use-state (or (:username config) "user1"))
+        (hooks/use-state (or (:username config) "demo"))
         [password set-password]
-        (hooks/use-state (or (:password config) "password"))]
+        (hooks/use-state (or (:password config) "demo"))]
 
     (d/div
      {:class "card"}
@@ -309,7 +310,12 @@
       {:class "form-group"}
       (d/label "Backend URL")
       (d/input {:value server-url
-                :on-change #(set-server-url (.. % -target -value))}))
+                :placeholder "Leave blank for dev proxy or same origin"
+                :on-change #(set-server-url (.. % -target -value))})
+      (d/small {:style {:color "var(--muted)"
+                        :display "block"
+                        :marginTop "4px"}}
+               "Leave blank for dev proxy / same origin, or specify custom URL."))
 
      (d/div
       {:class "form-group"}
@@ -331,16 +337,29 @@
                 :on-change #(set-password (.. % -target -value))}))
 
      (d/div
-      {:style {:display "flex" :gap "8px" :marginTop "12px"}}
+      {:style {:display "flex"
+               :gap "8px"
+               :flexWrap "wrap"
+               :marginTop "12px"}}
       (d/button
        {:class "btn btn-primary"
         :on-click
-        #(let [new-cfg {:server-url server-url
+        #(let [new-cfg {:server-url (core/clean-server-url server-url)
                         :user-id user-id
                         :username username
                         :password password}]
            (on-save-config new-cfg))}
        "Save Settings")
+
+      (d/button
+       {:class "btn btn-secondary"
+        :on-click
+        #(let [cfg {:server-url (core/clean-server-url server-url)
+                    :user-id user-id
+                    :username username
+                    :password password}]
+           (on-register cfg))}
+       "Register Account")
 
       (d/button
        {:class "btn btn-secondary"
@@ -355,31 +374,65 @@
   (let [[active-tab set-active-tab] (hooks/use-state :entries)
         [entries set-entries]
         (hooks/use-state (or (ls/get-item :journal-entries) []))
-        [pending-changes set-pending-changes]
-        (hooks/use-state (or (ls/get-item :pending-changes) []))
+        [pending-ops set-pending-ops]
+        (hooks/use-state (or (ls/get-item :pending-ops)
+                             (ls/get-item :pending-changes)
+                             []))
+        [last-tx-id set-last-tx-id]
+        (hooks/use-state (or (ls/get-item :last-tx-id) 0))
         [editing-entry set-editing-entry] (hooks/use-state nil)
         [config set-config]
         (hooks/use-state (or (ls/get-item :sync-config)
-                             {:server-url "http://localhost:8000"
+                             {:server-url ""
                               :user-id "demo"
                               :username "demo"
                               :password "demo"}))
         [sync-status set-sync-status] (hooks/use-state nil)]
 
-    (let [save-entries!
-          (fn [new-entries new-changes]
+    (let [save-local!
+          (fn [new-entries new-ops]
             (set-entries new-entries)
             (ls/set-item! :journal-entries new-entries)
-            (when new-changes
-              (set-pending-changes new-changes)
-              (ls/set-item! :pending-changes new-changes)))
+            (when new-ops
+              (set-pending-ops new-ops)
+              (ls/set-item! :pending-ops new-ops)))
+
+          do-register!
+          (fn [{:keys [server-url user-id username password]}]
+            (set-sync-status "Registering account with backend...")
+            (go
+              (try
+                (let [url (str (core/clean-server-url server-url)
+                               "/storage/api/register")
+                      resp
+                      (<! (http/post
+                           url
+                           {:json-params {:id user-id
+                                          :login username
+                                          :password password}}))]
+                  (if (= 200 (:status resp))
+                    (do
+                      (let [new-cfg {:server-url (core/clean-server-url
+                                                  server-url)
+                                     :user-id user-id
+                                     :username username
+                                     :password password}]
+                        (set-config new-cfg)
+                        (ls/set-item! :sync-config new-cfg))
+                      (set-sync-status (str "Registered: " (:body resp))))
+                    (set-sync-status (str "Registration failed: status "
+                                          (:status resp)))))
+                (catch :default e
+                  (set-sync-status (str "Registration error: "
+                                        (.-message e)))))))
 
           do-sync!
           (fn []
             (set-sync-status "Syncing with backend...")
             (go
               (try
-                (let [url (str (:server-url config)
+                (let [in-flight pending-ops
+                      url (str (core/clean-server-url (:server-url config))
                                "/storage/api/sync/"
                                (:user-id config))
                       resp
@@ -387,10 +440,23 @@
                            url
                            {:basic-auth {:username (:username config)
                                          :password (:password config)}
-                            :json-params {:changes pending-changes}}))]
+                            :json-params {:since-tx-id last-tx-id
+                                          :operations in-flight}}))]
                   (if (= 200 (:status resp))
-                    (let [remote-entries (get-in resp [:body :entries])]
-                      (save-entries! remote-entries [])
+                    (let [body (:body resp)
+                          server-last-tx (or (:last-tx-id body) last-tx-id)
+                          server-txs (or (:transactions body) [])
+                          reconciled (core/reconcile-client-state
+                                      {:entries entries
+                                       :pending-ops pending-ops
+                                       :in-flight-ops in-flight
+                                       :received-txs server-txs})]
+                      (set-entries (:entries reconciled))
+                      (set-pending-ops (:pending-ops reconciled))
+                      (set-last-tx-id server-last-tx)
+                      (ls/set-item! :journal-entries (:entries reconciled))
+                      (ls/set-item! :pending-ops (:pending-ops reconciled))
+                      (ls/set-item! :last-tx-id server-last-tx)
                       (set-sync-status (str "Synced successfully at "
                                             (core/now-iso-str))))
                     (set-sync-status (str "Sync failed: status "
@@ -398,15 +464,16 @@
                 (catch :default e
                   (set-sync-status (str "Sync error: " (.-message e)))))))]
 
+
       (d/div
        {:class "container"}
        (d/header
         (d/h1 "Structured Data Journal")
         (d/div
-         (if (seq pending-changes)
+         (if (seq pending-ops)
            (d/span {:class "badge"
                     :style {:background "var(--danger)" :color "#fff"}}
-                   (str (count pending-changes) " unsynced"))
+                   (str (count pending-ops) " unsynced"))
            (d/span {:class "badge"
                     :style {:background "var(--success)" :color "#fff"}}
                    "Synced"))))
@@ -460,10 +527,10 @@
                   {:class "btn btn-danger btn-small"
                    :on-click
                    #(let [id (:id entry)
-                          del-change {:id id :deleted? true}
-                          remaining (vec (remove (fn [e] (= (:id e) id)) entries))
-                          new-changes (conj pending-changes del-change)]
-                      (save-entries! remaining new-changes))}
+                          del-op (core/create-delete-op id)
+                          updated-entries (core/apply-transaction entries del-op)
+                          updated-ops (conj pending-ops del-op)]
+                      (save-local! updated-entries updated-ops))}
                   "Delete")))
                (d/div {:class "entry-desc"} (:description entry))
                (when (seq (:data entry))
@@ -480,13 +547,10 @@
              :on-cancel #(set-active-tab :entries)
              :on-save
              (fn [entry]
-               (let [id (:id entry)
-                     updated-entries
-                     (if (some (fn [e] (= (:id e) id)) entries)
-                       (mapv (fn [e] (if (= (:id e) id) entry e)) entries)
-                       (conj entries entry))
-                     updated-changes (conj pending-changes entry)]
-                 (save-entries! updated-entries updated-changes)
+               (let [put-op (core/create-put-op entry)
+                     updated-entries (core/apply-transaction entries put-op)
+                     updated-ops (conj pending-ops put-op)]
+                 (save-local! updated-entries updated-ops)
                  (set-editing-entry nil)
                  (set-active-tab :entries)))})
 
@@ -502,6 +566,7 @@
                (set-config new-cfg)
                (ls/set-item! :sync-config new-cfg)
                (set-sync-status "Settings saved."))
+             :on-register do-register!
              :on-sync do-sync!})
 
          nil)))))

@@ -71,3 +71,75 @@
              (-> body :entries first :description)))
       (is (= "aspirin"
              (-> body :entries first :data :pills))))))
+
+(deftest robust-multi-client-sync-test
+  (testing "Multi-client sync via append-only transaction log"
+    (let [_ (sut/register-logger! "carol" "carol" "pass456")
+          auth "Basic Y2Fyb2w6cGFzczQ1Ng=="
+          entry-1 {:id "e-1"
+                   :timestamp "2026-09-14T08:00:00Z"
+                   :description "Morning walk"
+                   :data {:distance 3.2}}
+          ;; Client 1 submits put operation
+          c1-req (-> (mock/request :post "/storage/api/sync/carol")
+                     (mock/header "authorization" auth)
+                     (mock/json-body {:since-tx-id 0
+                                      :operations [{:client-tx-id "c1-op1"
+                                                    :op "put"
+                                                    :entry entry-1}]}))
+          c1-resp (sut/app c1-req)
+          c1-body (json/read-str (:body c1-resp) :key-fn keyword)]
+      (is (= 200 (:status c1-resp)))
+      (is (= 1 (:last-tx-id c1-body)))
+      (is (= 1 (count (:transactions c1-body))))
+      (is (= "put" (:op (first (:transactions c1-body)))))
+      (is (= 1 (:tx-id (first (:transactions c1-body)))))
+
+      ;; Test Idempotency: re-submitting c1-op1 does not duplicate
+      (let [retry-req (-> (mock/request :post "/storage/api/sync/carol")
+                          (mock/header "authorization" auth)
+                          (mock/json-body {:since-tx-id 1
+                                           :operations [{:client-tx-id "c1-op1"
+                                                         :op "put"
+                                                         :entry entry-1}]}))
+            retry-body (json/read-str (:body (sut/app retry-req)) :key-fn keyword)]
+        (is (= 1 (:last-tx-id retry-body)))
+        (is (empty? (:transactions retry-body))))
+
+      ;; Client 2 pulls changes since tx 0
+      (let [c2-pull-req (-> (mock/request :post "/storage/api/sync/carol")
+                            (mock/header "authorization" auth)
+                            (mock/json-body {:since-tx-id 0
+                                             :operations []}))
+            c2-pull-body (json/read-str (:body (sut/app c2-pull-req))
+                                        :key-fn keyword)]
+        (is (= 1 (:last-tx-id c2-pull-body)))
+        (is (= 1 (count (:transactions c2-pull-body))))
+        (is (= "e-1" (-> c2-pull-body :transactions first :entry :id))))
+
+      ;; Client 2 sends a delete operation
+      (let [c2-del-req (-> (mock/request :post "/storage/api/sync/carol")
+                           (mock/header "authorization" auth)
+                           (mock/json-body {:since-tx-id 1
+                                            :operations [{:client-tx-id "c2-op1"
+                                                          :op "delete"
+                                                          :id "e-1"}]}))
+            c2-del-body (json/read-str (:body (sut/app c2-del-req))
+                                       :key-fn keyword)]
+        (is (= 2 (:last-tx-id c2-del-body)))
+        (is (= 1 (count (:transactions c2-del-body))))
+        (is (= "delete" (:op (first (:transactions c2-del-body)))))
+        (is (= 2 (:tx-id (first (:transactions c2-del-body))))))
+
+      ;; Client 1 syncs from tx 1, receives the delete transaction
+      (let [c1-catchup (-> (mock/request :post "/storage/api/sync/carol")
+                           (mock/header "authorization" auth)
+                           (mock/json-body {:since-tx-id 1
+                                            :operations []}))
+            c1-catchup-body (json/read-str (:body (sut/app c1-catchup))
+                                           :key-fn keyword)]
+        (is (= 2 (:last-tx-id c1-catchup-body)))
+        (is (= 1 (count (:transactions c1-catchup-body))))
+        (is (= "delete" (:op (first (:transactions c1-catchup-body)))))
+        (is (= "e-1" (:id (first (:transactions c1-catchup-body)))))))))
+

@@ -88,3 +88,59 @@
       (is (string? iso-str))
       (is (re-matches #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*" iso-str)))))
 
+(deftest sync-reconciliation-test
+  (testing "apply-transactions handles puts and deletes"
+    (let [e1 {:id "1" :timestamp "2026-09-10T10:00:00Z" :description "One"}
+          e2 {:id "2" :timestamp "2026-09-10T11:00:00Z" :description "Two"}
+          tx-put-1 {:op "put" :entry e1 :tx-id 1}
+          tx-put-2 {:op "put" :entry e2 :tx-id 2}
+          tx-del-1 {:op "delete" :id "1" :tx-id 3}
+          res1 (sut/apply-transactions [] [tx-put-1 tx-put-2])
+          res2 (sut/apply-transactions res1 [tx-del-1])]
+      (is (= 2 (count res1)))
+      (is (= ["1" "2"] (mapv :id res1)))
+      (is (= 1 (count res2)))
+      (is (= "2" (:id (first res2))))))
+
+  (testing "reconcile-client-state retains concurrent in-flight edits"
+    (let [base-entry {:id "e1" :timestamp "2026-09-10T10:00:00Z"
+                      :description "Base"}
+          ;; Client sent op1 for e1
+          op1 {:client-tx-id "c-1" :op "put" :entry base-entry}
+          ;; While sync in flight, client edited e2 locally
+          e2-edit {:id "e2" :timestamp "2026-09-10T12:00:00Z"
+                   :description "Created during sync"}
+          op2 {:client-tx-id "c-2" :op "put" :entry e2-edit}
+          ;; Server returns transaction for op1 plus a remote tx for e3
+          e3-remote {:id "e3" :timestamp "2026-09-10T11:00:00Z"
+                     :description "From peer device"}
+          server-txs [{:tx-id 1 :client-tx-id "c-1" :op "put"
+                       :entry base-entry}
+                      {:tx-id 2 :client-tx-id "peer-1" :op "put"
+                       :entry e3-remote}]
+          reconciled (sut/reconcile-client-state
+                      {:entries [base-entry e2-edit]
+                       :pending-ops [op1 op2]
+                       :in-flight-ops [op1]
+                       :received-txs server-txs})]
+      ;; op1 acknowledged, op2 still pending
+      (is (= 1 (count (:pending-ops reconciled))))
+      (is (= "c-2" (:client-tx-id (first (:pending-ops reconciled)))))
+      ;; Entries contains base-entry, e3-remote from server, and e2-edit
+      (is (= 3 (count (:entries reconciled))))
+      (is (= #{"e1" "e2" "e3"}
+             (set (map :id (:entries reconciled))))))))
+
+(deftest server-url-cleaning-test
+  (testing "clean-server-url normalizes trailing slashes and blank strings"
+    (is (= "http://localhost:8000"
+           (sut/clean-server-url "http://localhost:8000/")))
+    (is (= "http://localhost:8000"
+           (sut/clean-server-url "http://localhost:8000///")))
+    (is (= "http://localhost:8000"
+           (sut/clean-server-url "  http://localhost:8000  ")))
+    (is (= "" (sut/clean-server-url "")))
+    (is (= "" (sut/clean-server-url nil)))
+    (is (= "" (sut/clean-server-url "   ")))))
+
+

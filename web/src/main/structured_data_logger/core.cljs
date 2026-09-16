@@ -155,3 +155,67 @@
     (catch :default e
       {:result nil
        :error (.-message e)})))
+
+(defn create-put-op
+  "Creates a client put operation for an entry."
+  [entry]
+  {:client-tx-id (generate-uuid)
+   :op "put"
+   :entry (assoc entry :updated-at (or (:updated-at entry) (now-iso-str)))})
+
+(defn create-delete-op
+  "Creates a client delete operation for an entry id."
+  [id]
+  {:client-tx-id (generate-uuid)
+   :op "delete"
+   :id id
+   :deleted-at (now-iso-str)})
+
+(defn apply-transaction
+  "Applies a single transaction or operation to an entries vector."
+  [entries tx]
+  (let [op-name (name (or (:op tx) "put"))]
+    (case op-name
+      "delete"
+      (let [target-id (or (:id tx) (get-in tx [:entry :id]))]
+        (vec (remove (fn [e] (= (:id e) target-id)) entries)))
+
+      "put"
+      (let [entry (:entry tx)
+            eid (:id entry)
+            existing-idx (first (keep-indexed
+                                 #(when (= (:id %2) eid) %1)
+                                 entries))]
+        (if existing-idx
+          (assoc entries existing-idx entry)
+          (conj entries entry)))
+
+      entries)))
+
+(defn apply-transactions
+  "Applies an ordered collection of transactions to an entries vector,
+   and ensures the result is sorted chronologically by timestamp."
+  [entries txs]
+  (let [updated (reduce apply-transaction (or entries []) (or txs []))]
+    (vec (sort-by :timestamp updated))))
+
+(defn reconcile-client-state
+  "Reconciles client state after receiving transactions from the server.
+   Preserves pending operations added concurrently during sync."
+  [{:keys [entries pending-ops in-flight-ops received-txs]}]
+  (let [acked-ids (into #{} (keep :client-tx-id in-flight-ops))
+        remaining-pending (vec (remove #(and (:client-tx-id %)
+                                             (acked-ids (:client-tx-id %)))
+                                       (or pending-ops [])))
+        with-remote (apply-transactions entries received-txs)
+        final-entries (apply-transactions with-remote remaining-pending)]
+    {:entries final-entries
+     :pending-ops remaining-pending}))
+
+(defn clean-server-url
+  "Trims whitespace and strips trailing slashes from server URL."
+  [u]
+  (if (str/blank? u)
+    ""
+    (str/replace (str/trim (str u)) #"/+$" "")))
+
