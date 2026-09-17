@@ -3,6 +3,7 @@
             [taoensso.telemere :as tel]
             ["react-dom/client" :as rdom]
             ["react" :as react]
+            [structured-data-logger.core :as core]
             [structured-data-logger.ui :refer [AppRoot]]))
 
 (defonce root (rdom/createRoot (js/document.getElementById "root")))
@@ -13,13 +14,15 @@
 
 (defn register-service-worker! []
   (when (exists? js/navigator.serviceWorker)
-    (-> (js/navigator.serviceWorker.register "sw.js")
-        (.then (fn [reg]
-                 (tel/log! :info (str "ServiceWorker registered with scope: "
-                                      (.-scope reg)))))
-        (.catch (fn [err]
-                  (tel/log! :warn (str "ServiceWorker registration failed: "
-                                       err)))))))
+    (let [base (core/resolve-base-path (.-pathname js/location))
+          sw-url (str base "sw.js")]
+      (-> (js/navigator.serviceWorker.register sw-url)
+          (.then (fn [reg]
+                   (tel/log! :info (str "ServiceWorker registered with scope: "
+                                        (.-scope reg)))))
+          (.catch (fn [err]
+                    (tel/log! :warn (str "ServiceWorker registration failed: "
+                                         err))))))))
 
 (defn ^:export init []
   (render)

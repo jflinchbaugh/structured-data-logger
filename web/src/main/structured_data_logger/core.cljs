@@ -244,16 +244,21 @@
   (boolean (and (string? s) (re-matches email-regex (str/trim s)))))
 
 (defn pwa-cache-urls
-  "Returns list of asset URLs to pre-cache for offline PWA operation."
-  [build-ts]
-  (let [ts-suffix (if (str/blank? (str build-ts)) "" (str "?ts=" build-ts))]
-    ["/"
-     "/index.html"
-     (str "/style.css" ts-suffix)
-     (str "/js/main.js" ts-suffix)
-     "/manifest.json"
-     "/icon-192.png"
-     "/icon-512.png"]))
+  "Returns list of asset URLs to pre-cache for offline PWA operation.
+   Supports an optional context-path (defaults to \"/\")."
+  ([build-ts]
+   (pwa-cache-urls build-ts "/"))
+  ([build-ts context-path]
+   (let [base (let [cp (if (str/blank? (str context-path)) "/" (str context-path))]
+                (if (str/ends-with? cp "/") cp (str cp "/")))
+         ts-suffix (if (str/blank? (str build-ts)) "" (str "?ts=" build-ts))]
+     [base
+      (str base "index.html")
+      (str base "style.css" ts-suffix)
+      (str base "js/main.js" ts-suffix)
+      (str base "manifest.json")
+      (str base "icon-192.png")
+      (str base "icon-512.png")])))
 
 (defn sync-settings-dirty?
   "Checks whether candidate sync settings differ from saved settings."
@@ -270,4 +275,14 @@
   (let [p (str path)]
     (boolean (or (= p "/journal/api")
                  (str/starts-with? p "/journal/api/")))))
+
+(defn resolve-base-path
+  "Resolves the application context base path from a URL pathname.
+   Returns '/journal/' if the pathname starts with '/journal', otherwise '/'."
+  [pathname]
+  (let [p (str pathname)]
+    (if (or (= p "/journal")
+            (str/starts-with? p "/journal/"))
+      "/journal/"
+      "/")))
 

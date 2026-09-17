@@ -177,16 +177,27 @@
       (is (= [] (:entries res))))))
 
 (deftest pwa-offline-assets-test
-  (testing "pwa-cache-urls generates essential asset paths for offline caching"
-    (let [urls (sut/pwa-cache-urls "12345")]
-      (is (vector? urls))
-      (is (some #{"/"} urls))
-      (is (some #{"/index.html"} urls))
-      (is (some #{"/style.css?ts=12345"} urls))
-      (is (some #{"/js/main.js?ts=12345"} urls))
-      (is (some #{"/manifest.json"} urls))
-      (is (some #{"/icon-192.png"} urls))
-      (is (some #{"/icon-512.png"} urls)))))
+  (testing "pwa-cache-urls generates essential asset paths for offline caching with context path"
+    (let [dev-urls (sut/pwa-cache-urls "12345" "/")
+          prod-urls (sut/pwa-cache-urls "12345" "/journal/")]
+      (is (vector? dev-urls))
+      (is (some #{"/"} dev-urls))
+      (is (some #{"/index.html"} dev-urls))
+      (is (some #{"/style.css?ts=12345"} dev-urls))
+      (is (some #{"/js/main.js?ts=12345"} dev-urls))
+      (is (some #{"/manifest.json"} dev-urls))
+      (is (some #{"/icon-192.png"} dev-urls))
+      (is (some #{"/icon-512.png"} dev-urls))
+
+      (is (vector? prod-urls))
+      (is (some #{"/journal/"} prod-urls))
+      (is (some #{"/journal/index.html"} prod-urls))
+      (is (some #{"/journal/style.css?ts=12345"} prod-urls))
+      (is (some #{"/journal/js/main.js?ts=12345"} prod-urls))
+      (is (some #{"/journal/manifest.json"} prod-urls))
+      (is (some #{"/journal/icon-192.png"} prod-urls))
+      (is (some #{"/journal/icon-512.png"} prod-urls)))))
+
 
 (deftest sync-settings-dirty-test
   (testing "sync-settings-dirty? detects differences between form state and saved config"
@@ -219,3 +230,13 @@
     (is (false? (sut/dev-proxy-path? "/journal")))
     (is (false? (sut/dev-proxy-path? "/journal/")))
     (is (false? (sut/dev-proxy-path? "/other/api")))))
+
+(deftest context-path-test
+  (testing "resolve-base-path handles prod (/journal/) and local dev (/)"
+    (is (= "/journal/" (sut/resolve-base-path "/journal/")))
+    (is (= "/journal/" (sut/resolve-base-path "/journal/index.html")))
+    (is (= "/journal/" (sut/resolve-base-path "/journal")))
+    (is (= "/" (sut/resolve-base-path "/")))
+    (is (= "/" (sut/resolve-base-path "/index.html")))
+    (is (= "/" (sut/resolve-base-path "")))))
+

@@ -36,7 +36,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   // Never cache API/sync calls or non-GET requests
-  if (req.method !== 'GET' || url.pathname.startsWith('/journal/')) {
+  if (req.method !== 'GET' || url.pathname.startsWith('/journal/api')) {
     return;
   }
 
@@ -60,7 +60,8 @@ self.addEventListener('fetch', (event) => {
             return cachedResponse;
           }
           if (req.mode === 'navigate') {
-            return caches.match('./index.html') || caches.match('./');
+            return caches.match('./index.html')
+              .then((resp) => resp || caches.match('./'));
           }
         });
       })
