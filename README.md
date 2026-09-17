@@ -49,7 +49,7 @@ make test
 1. **Start the Backend Server**:
    ```bash
    cd server
-   clj -M:run-m 8000
+   clj -M:run-m 6000
    ```
    *(See [server/README.md](server/README.md) for full server details.)*
 
@@ -73,7 +73,7 @@ cd server && make container
 # 2. Run interactively in the foreground (press Ctrl+C to stop):
 make run-container
 # or:
-#   podman run --rm -it -p 8000:8000 -e port=8000 \
+#   podman run --rm -it -p 6000:6000 -e port=6000 \
 #     localhost/structured-data-logger-server:latest
 
 # Or run the combined server + XTDB pod:

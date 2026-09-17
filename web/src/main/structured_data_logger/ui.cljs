@@ -379,7 +379,7 @@
 
       (d/button
        {:class "btn btn-secondary"
-        :on-click on-sync}
+        :on-click #(when on-sync (on-sync "Syncing with backend..."))}
        "Sync Now"))
 
      (when sync-status
@@ -470,22 +470,22 @@
 
           do-sync!
           (fn [& [status-msg]]
-            (when-not (.-current syncing-ref)
-              (set! (.-current syncing-ref) true)
-              (let [{:keys [entries pending-ops last-tx-id config]}
-                    (.-current state-ref)]
-                (if (or (str/blank? (:user-id config))
-                        (not (core/valid-email? (:username config))))
-                  (do
-                    (set! (.-current syncing-ref) false)
-                    (when (and status-msg
-                               (not= status-msg "Syncing on startup..."))
-                      (set-sync-status
-                       "Configure email username & Sync ID to enable sync.")))
-                  (do
-                    (when status-msg
-                      (set-sync-status status-msg))
-                    (go
+            (let [msg (when (string? status-msg) status-msg)]
+              (when-not (.-current syncing-ref)
+                (set! (.-current syncing-ref) true)
+                (let [{:keys [entries pending-ops last-tx-id config]}
+                      (.-current state-ref)]
+                  (if (or (str/blank? (:user-id config))
+                          (not (core/valid-email? (:username config))))
+                    (do
+                      (set! (.-current syncing-ref) false)
+                      (when (and msg (not= msg "Syncing on startup..."))
+                        (set-sync-status
+                         "Configure email username & Sync ID to enable sync.")))
+                    (do
+                      (when msg
+                        (set-sync-status msg))
+                      (go
                       (try
                         (let [in-flight (or pending-ops [])
                               url (str "/journal/api/sync/"
@@ -533,7 +533,7 @@
                           (set-sync-status (str "Sync error: "
                                                 (.-message e))))
                         (finally
-                          (set! (.-current syncing-ref) false)))))))))]
+                          (set! (.-current syncing-ref) false))))))))))]
 
       ;; 1. Sync on mount / startup
       (hooks/use-effect

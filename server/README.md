@@ -17,16 +17,16 @@ and XTDB v2.
 
 ### Run Server in Development
 
-Run on port 8000 with in-memory storage (press `Ctrl+C` to stop):
+Run on port 6000 with in-memory storage (press `Ctrl+C` to stop):
 
 ```bash
-clj -M:run-m 8000
+clj -M:run-m 6000
 ```
 
 Run connected to an XTDB instance (press `Ctrl+C` to stop):
 
 ```bash
-clj -M:run-m 8000 localhost
+clj -M:run-m 6000 localhost
 ```
 
 ### Running Tests
@@ -53,7 +53,7 @@ The resulting JAR is written to:
 Run the compiled JAR:
 
 ```bash
-java -jar target/structured-data-logger-server-standalone.jar 8000
+java -jar target/structured-data-logger-server-standalone.jar 6000
 ```
 
 ## API Endpoints & Examples
@@ -61,7 +61,7 @@ java -jar target/structured-data-logger-server-standalone.jar 8000
 ### 1. Health Check (Ping)
 
 ```bash
-curl -s http://localhost:8000/journal/api/ping
+curl -s http://localhost:6000/journal/api/ping
 # Response: pong
 ```
 
@@ -71,7 +71,7 @@ curl -s http://localhost:8000/journal/api/ping
 curl -s -X POST \
   -H 'Content-Type: application/json' \
   -d '{"id":"alice","login":"alice","password":"secret123"}' \
-  http://localhost:8000/journal/api/register
+  http://localhost:6000/journal/api/register
 ```
 
 ### 3. Sync Journal Entries
@@ -85,14 +85,14 @@ curl -s -u alice:secret123 -X POST \
                    "timestamp":"2026-09-14T20:00:00Z",
                    "description":"Jogged 3 miles",
                    "data":{"mileage":3.0,"shoes":"running"}}]}' \
-  http://localhost:8000/journal/api/sync/alice
+  http://localhost:6000/journal/api/sync/alice
 ```
 
 ### 4. Fetch Synced Entries
 
 ```bash
 curl -s -u alice:secret123 \
-  http://localhost:8000/journal/api/document/alice
+  http://localhost:6000/journal/api/document/alice
 ```
 
 ## Running the Server Container
@@ -119,7 +119,7 @@ make run-container
 Or run directly with `podman`:
 
 ```bash
-podman run --rm -it -p 8000:8000 -e port=8000 \
+podman run --rm -it -p 6000:6000 -e port=6000 \
   localhost/structured-data-logger-server:latest
 ```
 
@@ -128,7 +128,7 @@ Press `Ctrl+C` at any time to cleanly stop and remove the container.
 To run interactively connected to an external XTDB host:
 
 ```bash
-podman run --rm -it -p 8000:8000 -e port=8000 \
+podman run --rm -it -p 6000:6000 -e port=6000 \
   -e dbhost=host.containers.internal \
   localhost/structured-data-logger-server:latest
 ```
@@ -139,8 +139,8 @@ Alternatively, to run detached in the background:
 
 ```bash
 podman run -d --name structured-data-logger-server \
-  -p 8000:8000 \
-  -e port=8000 \
+  -p 6000:6000 \
+  -e port=6000 \
   localhost/structured-data-logger-server:latest
 ```
 

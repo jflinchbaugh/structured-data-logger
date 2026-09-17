@@ -46,7 +46,7 @@ Open your browser to:
 `http://localhost:3000`
 
 The dev server automatically proxies backend `/journal/` API requests to
-`http://localhost:8000`.
+`http://localhost:6000`.
 
 ### 3. Running Tests
 

@@ -21,7 +21,7 @@ clean:
 	rm -f target/.uberjar-built
 
 run-container: container
-	podman run --rm -it -p 8000:8000 -e port=8000 \
+	podman run --rm -it -p 6000:6000 -e port=6000 \
 		localhost/structured-data-logger-server:latest
 
 run-server:

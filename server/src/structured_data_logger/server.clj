@@ -365,5 +365,5 @@
 
 (defn -main
   [& [port db-host]]
-  (let [p (if port (Integer/parseInt port) 8000)]
+  (let [p (if port (Integer/parseInt port) 6000)]
     (start-server! p db-host)))

@@ -133,12 +133,12 @@
 
 (deftest server-url-cleaning-test
   (testing "clean-server-url normalizes trailing slashes and blank strings"
-    (is (= "http://localhost:8000"
-           (sut/clean-server-url "http://localhost:8000/")))
-    (is (= "http://localhost:8000"
-           (sut/clean-server-url "http://localhost:8000///")))
-    (is (= "http://localhost:8000"
-           (sut/clean-server-url "  http://localhost:8000  ")))
+    (is (= "http://localhost:6000"
+           (sut/clean-server-url "http://localhost:6000/")))
+    (is (= "http://localhost:6000"
+           (sut/clean-server-url "http://localhost:6000///")))
+    (is (= "http://localhost:6000"
+           (sut/clean-server-url "  http://localhost:6000  ")))
     (is (= "" (sut/clean-server-url "")))
     (is (= "" (sut/clean-server-url nil)))
     (is (= "" (sut/clean-server-url "   ")))))
