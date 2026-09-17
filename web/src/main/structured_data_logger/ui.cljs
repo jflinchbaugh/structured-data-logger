@@ -312,7 +312,10 @@
         (hooks/use-state (or (:username config) ""))
         [password set-password]
         (hooks/use-state (or (:password config) ""))
-        pending-count (count (or pending-ops []))]
+        pending-count (count (or pending-ops []))
+        dirty? (core/sync-settings-dirty? config {:user-id user-id
+                                                  :username username
+                                                  :password password})]
 
     (d/div
      {:class "card"}
@@ -360,16 +363,18 @@
                :flexWrap "wrap"
                :marginTop "12px"}}
       (d/button
-       {:class "btn btn-primary"
+       {:class (str "btn btn-primary" (when dirty? " btn-highlight"))
         :on-click
         #(let [new-cfg {:user-id user-id
                         :username username
                         :password password}]
            (on-save-config new-cfg))}
-       "Save Settings")
+       (if dirty? "Save Settings *" "Save Settings"))
 
       (d/button
        {:class "btn btn-secondary"
+        :disabled dirty?
+        :title (when dirty? "Save settings before registering")
         :on-click
         #(let [cfg {:user-id user-id
                     :username username
@@ -379,6 +384,8 @@
 
       (d/button
        {:class "btn btn-secondary"
+        :disabled dirty?
+        :title (when dirty? "Save settings before syncing")
         :on-click #(when on-sync (on-sync "Syncing with backend..."))}
        "Sync Now"))
 

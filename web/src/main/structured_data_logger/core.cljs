@@ -255,3 +255,12 @@
      "/icon-192.png"
      "/icon-512.png"]))
 
+(defn sync-settings-dirty?
+  "Checks whether candidate sync settings differ from saved settings."
+  [saved current]
+  (let [normalize (fn [m]
+                    {:user-id (or (:user-id m) "")
+                     :username (or (:username m) "")
+                     :password (or (:password m) "")})]
+    (not= (normalize saved) (normalize current))))
+

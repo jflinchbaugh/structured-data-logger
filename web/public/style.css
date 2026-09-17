@@ -167,6 +167,30 @@ input:focus, select:focus, textarea:focus {
   font-size: 0.8rem;
 }
 
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-highlight {
+  background: var(--warning, #f59e0b) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35);
+  animation: pulse-highlight 1.5s infinite alternate;
+}
+
+@keyframes pulse-highlight {
+  from {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+  }
+  to {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.5);
+  }
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;

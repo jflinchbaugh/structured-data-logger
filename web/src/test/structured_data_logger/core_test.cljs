@@ -188,5 +188,26 @@
       (is (some #{"/icon-192.png"} urls))
       (is (some #{"/icon-512.png"} urls)))))
 
+(deftest sync-settings-dirty-test
+  (testing "sync-settings-dirty? detects differences between form state and saved config"
+    (let [saved {:user-id "dev-1" :username "alice@example.com" :password "secret"}]
+      (is (false? (sut/sync-settings-dirty? saved saved)))
+      (is (false? (sut/sync-settings-dirty? saved {:user-id "dev-1"
+                                                   :username "alice@example.com"
+                                                   :password "secret"})))
+      (is (true? (sut/sync-settings-dirty? saved {:user-id "dev-2"
+                                                  :username "alice@example.com"
+                                                  :password "secret"})))
+      (is (true? (sut/sync-settings-dirty? saved {:user-id "dev-1"
+                                                  :username "bob@example.com"
+                                                  :password "secret"})))
+      (is (true? (sut/sync-settings-dirty? saved {:user-id "dev-1"
+                                                  :username "alice@example.com"
+                                                  :password "newsecret"})))
+      (is (false? (sut/sync-settings-dirty? nil {:user-id ""
+                                                 :username ""
+                                                 :password ""}))))))
+
+
 
 
