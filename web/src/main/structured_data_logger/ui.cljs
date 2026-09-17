@@ -107,7 +107,7 @@
      (d/div
       {:class "form-group"}
       (d/label "Description")
-      (d/textarea {:rows 3
+      (d/textarea {:rows 5
                    :placeholder "e.g. Morning vitamins, jogged 3 miles"
                    :value description
                    :on-change #(set-description (.. % -target -value))}))

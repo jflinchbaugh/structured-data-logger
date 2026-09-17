@@ -123,6 +123,11 @@ input, select, textarea {
   background: #fff;
 }
 
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--primary);
