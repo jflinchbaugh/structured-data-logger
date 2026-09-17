@@ -304,17 +304,31 @@
             (with-out-str (pp/pprint (:result eval-out))))))))))
 
 (defnc SettingsView
-  [{:keys [config on-save-config on-register on-sync sync-status]}]
+  [{:keys [config pending-ops on-save-config on-register on-sync sync-status]}]
   (let [[user-id set-user-id]
         (hooks/use-state (or (:user-id config) ""))
         [username set-username]
         (hooks/use-state (or (:username config) ""))
         [password set-password]
-        (hooks/use-state (or (:password config) ""))]
+        (hooks/use-state (or (:password config) ""))
+        pending-count (count (or pending-ops []))]
 
     (d/div
      {:class "card"}
-     (d/h3 {:class "card-title"} "Backend Sync & Settings")
+     (d/div
+      {:style {:display "flex"
+               :justify-content "space-between"
+               :align-items "center"
+               :marginBottom "12px"}}
+      (d/h3 {:class "card-title" :style {:margin 0}}
+            "Backend Sync & Settings")
+      (if (pos? pending-count)
+        (d/span {:class "badge"
+                 :style {:background "var(--danger)" :color "#fff"}}
+                (str pending-count " unsynced"))
+        (d/span {:class "badge"
+                 :style {:background "var(--success)" :color "#fff"}}
+                "Synced")))
 
      (d/div
       {:class "form-group"}
@@ -638,6 +652,7 @@
          :settings
          ($ SettingsView
             {:config config
+             :pending-ops pending-ops
              :sync-status sync-status
              :on-save-config
              (fn [new-cfg]
