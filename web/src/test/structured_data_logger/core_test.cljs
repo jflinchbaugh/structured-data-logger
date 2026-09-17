@@ -154,4 +154,26 @@
     (is (false? (sut/valid-email? "")))
     (is (false? (sut/valid-email? nil)))))
 
+(deftest blank-and-invalid-entry-test
+  (testing "valid-entry? validates required fields"
+    (is (false? (sut/valid-entry? nil)))
+    (is (false? (sut/valid-entry? {})))
+    (is (false? (sut/valid-entry? {:id "1"})))
+    (is (false? (sut/valid-entry? {:id "1" :timestamp ""})))
+    (is (false? (sut/valid-entry? {:id "" :timestamp "2026-09-17T00:00:00Z"})))
+    (is (true? (sut/valid-entry? {:id "1" :timestamp "2026-09-17T00:00:00Z"}))))
+
+  (testing "apply-transaction discards puts with nil or invalid entries"
+    (is (= [] (sut/apply-transaction [] {:op "put" :entry nil})))
+    (is (= [] (sut/apply-transaction [] {:op "put" :entry {}})))
+    (is (= [] (sut/apply-transaction [nil {}] {:op "delete" :id nil}))))
+
+  (testing "reconcile-client-state purges blank entries and prevents revival"
+    (let [res (sut/reconcile-client-state
+               {:entries [nil {}]
+                :pending-ops []
+                :in-flight-ops []
+                :received-txs [{:op "put" :entry nil}]})]
+      (is (= [] (:entries res))))))
+
 

@@ -74,6 +74,7 @@
                 {:key (name k) :val (str v)})))
         [new-key-name set-new-key-name] (hooks/use-state "")
         [new-key-val set-new-key-val] (hooks/use-state "")
+        [error-msg set-error-msg] (hooks/use-state nil)
         blended-k (core/blended-keys all-entries)
         all-k (core/all-known-keys all-entries)
         new-key-vals (if (str/blank? new-key-name)
@@ -197,6 +198,12 @@
                          :on-click #(set-new-key-val (str v))}
                         (str v)))))))))
 
+     (when error-msg
+       (d/div {:style {:color "var(--danger)"
+                       :marginTop "8px"
+                       :fontSize "0.85rem"}}
+              error-msg))
+
      (d/div
       {:style {:display "flex" :gap "8px" :marginTop "16px"}}
       (d/button
@@ -212,12 +219,17 @@
                               (for [{:keys [key val]} effective-kv
                                     :when (not (str/blank? key))]
                                 [(keyword (str/trim key)) (parse-val val)]))
-               entry (core/create-entry
-                      {:id (:id initial-entry)
-                       :timestamp (core/from-local-datetime-input timestamp)
-                       :description description
-                       :data data-map})]
-           (on-save entry))}
+               desc (str/trim (or description ""))]
+           (if (and (str/blank? desc) (empty? data-map))
+             (set-error-msg
+              "Please provide a description or at least one field.")
+             (let [entry (core/create-entry
+                          {:id (:id initial-entry)
+                           :timestamp (core/from-local-datetime-input timestamp)
+                           :description desc
+                           :data data-map})]
+               (set-error-msg nil)
+               (on-save entry))))}
        "Save Entry")
       (when on-cancel
         (d/button {:class "btn btn-secondary"
@@ -362,11 +374,16 @@
 (defnc AppRoot []
   (let [[active-tab set-active-tab] (hooks/use-state :entries)
         [entries set-entries]
-        (hooks/use-state (or (ls/get-item :journal-entries) []))
+        (hooks/use-state (filterv core/valid-entry?
+                                  (or (ls/get-item :journal-entries) [])))
         [pending-ops set-pending-ops]
-        (hooks/use-state (or (ls/get-item :pending-ops)
-                             (ls/get-item :pending-changes)
-                             []))
+        (hooks/use-state (vec (filter #(and (map? %)
+                                            (string? (:client-tx-id %))
+                                            (not (str/blank?
+                                                  (:client-tx-id %))))
+                                      (or (ls/get-item :pending-ops)
+                                          (ls/get-item :pending-changes)
+                                          []))))
         [last-tx-id set-last-tx-id]
         (hooks/use-state (or (ls/get-item :last-tx-id) 0))
         [editing-entry set-editing-entry] (hooks/use-state nil)
@@ -387,11 +404,12 @@
 
     (let [save-local!
           (fn [new-entries new-ops]
-            (set-entries new-entries)
-            (ls/set-item! :journal-entries new-entries)
-            (when new-ops
-              (set-pending-ops new-ops)
-              (ls/set-item! :pending-ops new-ops)))
+            (let [clean-entries (filterv core/valid-entry? (or new-entries []))]
+              (set-entries clean-entries)
+              (ls/set-item! :journal-entries clean-entries)
+              (when new-ops
+                (set-pending-ops new-ops)
+                (ls/set-item! :pending-ops new-ops))))
 
           do-register!
           (fn [{:keys [user-id username password]}]
@@ -463,31 +481,39 @@
                                                   (or last-tx-id 0)
                                                   :operations
                                                   in-flight}}))]
-                    (if (= 200 (:status resp))
-                      (let [body (:body resp)
-                            server-last-tx (or (:last-tx-id body) last-tx-id)
-                            server-txs (or (:transactions body) [])
-                            cur-pending (or (:pending-ops (.-current state-ref))
-                                            pending-ops)
-                            cur-entries (or (:entries (.-current state-ref))
-                                            entries)
-                            reconciled (core/reconcile-client-state
-                                        {:entries cur-entries
-                                         :pending-ops cur-pending
-                                         :in-flight-ops in-flight
-                                         :received-txs server-txs})]
-                        (set-entries (:entries reconciled))
-                        (set-pending-ops (:pending-ops reconciled))
-                        (set-last-tx-id server-last-tx)
-                        (ls/set-item! :journal-entries (:entries reconciled))
-                        (ls/set-item! :pending-ops (:pending-ops reconciled))
-                        (ls/set-item! :last-tx-id server-last-tx)
-                        (set-sync-status (str "Synced successfully at "
-                                              (core/now-iso-str))))
-                      (set-sync-status (str "Sync failed: status "
-                                            (:status resp)))))
+                          (if (= 200 (:status resp))
+                            (let [body (:body resp)
+                                  server-last-tx (or (:last-tx-id body)
+                                                     last-tx-id)
+                                  server-txs (or (:transactions body) [])
+                                  cur-pending (or (:pending-ops
+                                                   (.-current state-ref))
+                                                  pending-ops)
+                                  cur-entries (or (:entries
+                                                   (.-current state-ref))
+                                                  entries)
+                                  reconciled (core/reconcile-client-state
+                                              {:entries cur-entries
+                                               :pending-ops cur-pending
+                                               :in-flight-ops in-flight
+                                               :received-txs server-txs})
+                                  clean (filterv core/valid-entry?
+                                                 (:entries reconciled))]
+                              (set-entries clean)
+                              (set-pending-ops (:pending-ops reconciled))
+                              (set-last-tx-id server-last-tx)
+                              (ls/set-item! :journal-entries clean)
+                              (ls/set-item! :pending-ops
+                                            (:pending-ops reconciled))
+                              (ls/set-item! :last-tx-id server-last-tx)
+                              (set-sync-status
+                               (str "Synced successfully at "
+                                    (core/now-iso-str))))
+                            (set-sync-status (str "Sync failed: status "
+                                                  (:status resp)))))
                         (catch :default e
-                          (set-sync-status (str "Sync error: " (.-message e))))
+                          (set-sync-status (str "Sync error: "
+                                                (.-message e))))
                         (finally
                           (set! (.-current syncing-ref) false)))))))))]
 
@@ -503,96 +529,89 @@
        (let [on-online (fn [] (do-sync! "Syncing on reconnect..."))
              on-vis (fn []
                       (when (= (.-visibilityState js/document) "visible")
-                        (do-sync!)))]
+                        (do-sync! "Syncing on focus...")))]
          (.addEventListener js/window "online" on-online)
          (.addEventListener js/document "visibilitychange" on-vis)
          (fn []
            (.removeEventListener js/window "online" on-online)
            (.removeEventListener js/document "visibilitychange" on-vis))))
 
-      ;; 3. Periodic background sync every 30 seconds
-      (hooks/use-effect
-       :once
-       (let [timer-id (js/setInterval do-sync! 30000)]
-         (fn []
-           (js/clearInterval timer-id))))
-
       (d/div
-       {:class "container"}
+       {:class "app-container"}
        (d/header
-        (d/h1 "Structured Data Journal")
-        (d/div
-         (if (seq pending-ops)
-           (d/span {:class "badge"
-                    :style {:background "var(--danger)" :color "#fff"}}
-                   (str (count pending-ops) " unsynced"))
-           (d/span {:class "badge"
-                    :style {:background "var(--success)" :color "#fff"}}
-                   "Synced"))))
-
-       (d/nav
-        {:class "nav-tabs"}
-        (d/button {:class (str "tab-btn " (when (= active-tab :entries) "active"))
-                   :on-click #(set-active-tab :entries)}
-                  "Journal")
-        (d/button {:class (str "tab-btn " (when (= active-tab :new) "active"))
-                   :on-click #(do (set-editing-entry nil)
-                                  (set-active-tab :new))}
-                  "+ New")
-        (d/button {:class (str "tab-btn " (when (= active-tab :dashboard) "active"))
-                   :on-click #(set-active-tab :dashboard)}
-                  "Dashboard")
-        (d/button {:class (str "tab-btn " (when (= active-tab :settings) "active"))
-                   :on-click #(set-active-tab :settings)}
-                  "Sync"))
+        {:class "app-header"}
+        (d/h1 {:class "app-title"} "Structured Data Journal")
+        (d/nav
+         {:class "nav-tabs"}
+         (d/button {:class (str "nav-tab" (when (= active-tab :entries) " active"))
+                    :on-click #(set-active-tab :entries)}
+                   "Entries")
+         (d/button {:class (str "nav-tab" (when (= active-tab :new) " active"))
+                    :on-click #(do (set-editing-entry nil)
+                                   (set-active-tab :new))}
+                   "+ New")
+         (d/button {:class (str "nav-tab" (when (= active-tab :dashboard) " active"))
+                    :on-click #(set-active-tab :dashboard)}
+                   "Dashboard")
+         (d/button {:class (str "nav-tab" (when (= active-tab :settings) " active"))
+                    :on-click #(set-active-tab :settings)}
+                   "Sync / Settings")))
 
        (case active-tab
          :entries
-         (d/div
-          {:class "card"}
-          (d/div {:style {:display "flex"
-                          :justify-content "space-between"
-                          :align-items "center"
-                          :marginBottom "12px"}}
-                 (d/h3 {:class "card-title" :style {:margin 0}}
-                       (str "Entries (" (count entries) ")"))
-                 (d/button {:class "btn btn-primary btn-small"
-                            :on-click #(set-active-tab :new)}
-                           "+ Add Entry"))
-          (if (empty? entries)
-            (d/p {:style {:color "var(--muted)" :padding "16px 0"}}
-                 "No journal entries recorded yet. Click '+ Add Entry' to create one.")
-            (for [entry (sort-by :timestamp #(compare %2 %1) entries)]
-              (d/div
-               {:key (:id entry) :class "entry-list-item"}
-               (d/div
-                {:class "entry-header"}
-                (d/span (:timestamp entry))
+         (let [clean-entries (filterv core/valid-entry? (or entries []))]
+           (d/div
+            {:class "card"}
+            (d/div {:style {:display "flex"
+                            :justify-content "space-between"
+                            :align-items "center"
+                            :marginBottom "12px"}}
+                   (d/h3 {:class "card-title" :style {:margin 0}}
+                         (str "Entries (" (count clean-entries) ")"))
+                   (d/button {:class "btn btn-primary btn-small"
+                              :on-click #(set-active-tab :new)}
+                             "+ Add Entry"))
+            (if (empty? clean-entries)
+              (d/p {:style {:color "var(--muted)" :padding "16px 0"}}
+                   "No journal entries recorded yet. Click '+ Add Entry' to create one.")
+              (for [entry (sort-by :timestamp #(compare %2 %1) clean-entries)]
                 (d/div
-                 (d/button
-                  {:class "btn btn-secondary btn-small"
-                   :style {:marginRight "6px"}
-                   :on-click #(do (set-editing-entry entry)
-                                  (set-active-tab :new))}
-                  "Edit")
-                 (d/button
-                  {:class "btn btn-danger btn-small"
-                   :on-click
-                   (fn []
-                     (let [id (:id entry)
-                           del-op (core/create-delete-op id)
-                           updated-entries (core/apply-transaction entries del-op)
-                           updated-ops (conj pending-ops del-op)]
-                       (save-local! updated-entries updated-ops)
-                       (js/setTimeout do-sync! 50)))}
-                  "Delete")))
-               (d/div {:class "entry-desc"} (:description entry))
-               (when (seq (:data entry))
+                 {:key (:id entry) :class "entry-list-item"}
                  (d/div
-                  {:class "entry-kv-list"}
-                  (for [[k v] (:data entry)]
-                    (d/span {:key (str k) :class "badge"}
-                            (str (name k) ": " v)))))))))
+                  {:class "entry-header"}
+                  (d/span (:timestamp entry))
+                  (d/div
+                   (d/button
+                    {:class "btn btn-secondary btn-small"
+                     :style {:marginRight "6px"}
+                     :on-click #(do (set-editing-entry entry)
+                                    (set-active-tab :new))}
+                    "Edit")
+                   (d/button
+                    {:class "btn btn-danger btn-small"
+                     :on-click
+                     (fn []
+                       (let [id (:id entry)
+                             del-op (when (and (string? id)
+                                               (not (str/blank? id)))
+                                      (core/create-delete-op id))
+                             updated-entries (if del-op
+                                               (core/apply-transaction
+                                                clean-entries del-op)
+                                               clean-entries)
+                             updated-ops (if del-op
+                                           (conj pending-ops del-op)
+                                           pending-ops)]
+                         (save-local! updated-entries updated-ops)
+                         (js/setTimeout do-sync! 50)))}
+                    "Delete")))
+                 (d/div {:class "entry-desc"} (:description entry))
+                 (when (seq (:data entry))
+                   (d/div
+                    {:class "entry-kv-list"}
+                    (for [[k v] (:data entry)]
+                      (d/span {:key (str k) :class "badge"}
+                              (str (name k) ": " v))))))))))
 
          :new
          ($ EntryForm

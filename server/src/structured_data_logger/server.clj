@@ -128,23 +128,50 @@
       (swap! storage assoc-in [id :document] body-str)
       (api-response 200 body-str "application/json"))))
 
+(defn valid-entry?
+  "Returns true if e is a valid entry map with non-blank id and timestamp."
+  [e]
+  (boolean
+   (and (map? e)
+        (string? (:id e))
+        (not (str/blank? (:id e)))
+        (string? (:timestamp e))
+        (not (str/blank? (:timestamp e))))))
+
+(defn valid-op?
+  [op]
+  (and (map? op)
+       (let [t (name (or (:op op) "put"))]
+         (case t
+           "put" (valid-entry? (:entry op))
+           "delete" (let [tid (or (:id op) (get-in op [:entry :id]))]
+                      (and (string? tid) (not (str/blank? tid))))
+           false))))
+
 (defn- apply-op-to-entries
   [entries op]
-  (let [op-type (name (or (:op op) "put"))]
+  (let [clean-entries (filterv valid-entry? (or entries []))
+        op-type (name (or (:op op) "put"))]
     (case op-type
       "delete"
       (let [target-id (or (:id op) (get-in op [:entry :id]))]
-        (vec (remove (fn [e] (= (:id e) target-id)) entries)))
+        (if (and (string? target-id) (not (str/blank? target-id)))
+          (vec (remove (fn [e] (= (:id e) target-id)) clean-entries))
+          clean-entries))
+
       "put"
-      (let [entry (:entry op)
-            eid (:id entry)
-            existing-idx (first (keep-indexed
-                                 #(when (= (:id %2) eid) %1)
-                                 entries))]
-        (if existing-idx
-          (assoc entries existing-idx entry)
-          (conj entries entry)))
-      entries)))
+      (let [entry (:entry op)]
+        (if (valid-entry? entry)
+          (let [eid (:id entry)
+                existing-idx (first (keep-indexed
+                                     #(when (= (:id %2) eid) %1)
+                                     clean-entries))]
+            (if existing-idx
+              (assoc clean-entries existing-idx entry)
+              (conj clean-entries entry)))
+          clean-entries))
+
+      clean-entries)))
 
 (defn- record-transactions!
   [journal-id new-ops]
@@ -155,9 +182,11 @@
        (let [journal (get store journal-id)
              tx-log (or (:tx-log journal) [])
              existing-client-txs (into #{} (keep :client-tx-id tx-log))
-             unseen-ops (remove #(and (:client-tx-id %)
-                                      (existing-client-txs (:client-tx-id %)))
-                                new-ops)
+             unseen-ops (->> (or new-ops [])
+                             (filter valid-op?)
+                             (remove #(and (:client-tx-id %)
+                                           (existing-client-txs
+                                            (:client-tx-id %)))))
              start-tx-id (or (:last-tx-id journal) 0)
              indexed-txs (map-indexed
                           (fn [idx op]
@@ -170,8 +199,9 @@
                           unseen-ops)
              new-last-tx-id (+ start-tx-id (count unseen-ops))
              updated-log (into tx-log indexed-txs)
+             clean-base (filterv valid-entry? (or (:entries journal) []))
              updated-entries (reduce apply-op-to-entries
-                                     (or (:entries journal) [])
+                                     clean-base
                                      indexed-txs)
              sorted-entries (vec (sort-by :timestamp updated-entries))]
          (assoc store journal-id
@@ -207,13 +237,15 @@
           _ (record-transactions! id ops)
           journal (get @storage id)
           all-txs (or (:tx-log journal) [])
-          filtered-txs (filterv #(> (:tx-id %) since-tx-id) all-txs)
+          filtered-txs (filterv #(and (> (:tx-id %) since-tx-id)
+                                      (valid-op? %))
+                                all-txs)
           now-str (str (t/instant))]
       (json-response
        200
        {:last-tx-id (or (:last-tx-id journal) 0)
         :transactions filtered-txs
-        :entries (or (:entries journal) [])
+        :entries (filterv valid-entry? (or (:entries journal) []))
         :server-time now-str}))))
 
 (defn unregister-handler
@@ -288,7 +320,13 @@
                   [_id entries tx-log last-tx-id document login password]))
      (reduce
       (fn [store doc]
-        (assoc store (:xt/id doc) (dissoc doc :xt/id)))
+        (let [jid (or (:xt/id doc) (:_id doc))]
+          (if jid
+            (assoc store jid
+                   (assoc (dissoc doc :xt/id :_id)
+                          :entries (filterv valid-entry?
+                                            (or (:entries doc) []))))
+            store)))
       {})
      (reset! storage)))
   (add-watch

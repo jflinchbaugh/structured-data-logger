@@ -171,32 +171,48 @@
    :id id
    :deleted-at (now-iso-str)})
 
+(defn valid-entry?
+  "Returns true if e is a valid entry map with non-blank id and timestamp."
+  [e]
+  (boolean
+   (and (map? e)
+        (string? (:id e))
+        (not (str/blank? (:id e)))
+        (string? (:timestamp e))
+        (not (str/blank? (:timestamp e))))))
+
 (defn apply-transaction
   "Applies a single transaction or operation to an entries vector."
   [entries tx]
-  (let [op-name (name (or (:op tx) "put"))]
+  (let [clean-entries (filterv valid-entry? (or entries []))
+        op-name (name (or (:op tx) "put"))]
     (case op-name
       "delete"
       (let [target-id (or (:id tx) (get-in tx [:entry :id]))]
-        (vec (remove (fn [e] (= (:id e) target-id)) entries)))
+        (if (and (string? target-id) (not (str/blank? target-id)))
+          (vec (remove (fn [e] (= (:id e) target-id)) clean-entries))
+          clean-entries))
 
       "put"
-      (let [entry (:entry tx)
-            eid (:id entry)
-            existing-idx (first (keep-indexed
-                                 #(when (= (:id %2) eid) %1)
-                                 entries))]
-        (if existing-idx
-          (assoc entries existing-idx entry)
-          (conj entries entry)))
+      (let [entry (:entry tx)]
+        (if (valid-entry? entry)
+          (let [eid (:id entry)
+                existing-idx (first (keep-indexed
+                                     #(when (= (:id %2) eid) %1)
+                                     clean-entries))]
+            (if existing-idx
+              (assoc clean-entries existing-idx entry)
+              (conj clean-entries entry)))
+          clean-entries))
 
-      entries)))
+      clean-entries)))
 
 (defn apply-transactions
   "Applies an ordered collection of transactions to an entries vector,
    and ensures the result is sorted chronologically by timestamp."
   [entries txs]
-  (let [updated (reduce apply-transaction (or entries []) (or txs []))]
+  (let [clean (filterv valid-entry? (or entries []))
+        updated (reduce apply-transaction clean (or txs []))]
     (vec (sort-by :timestamp updated))))
 
 (defn reconcile-client-state
@@ -207,9 +223,10 @@
         remaining-pending (vec (remove #(and (:client-tx-id %)
                                              (acked-ids (:client-tx-id %)))
                                        (or pending-ops [])))
-        with-remote (apply-transactions entries received-txs)
+        with-remote (apply-transactions (filterv valid-entry? (or entries []))
+                                        received-txs)
         final-entries (apply-transactions with-remote remaining-pending)]
-    {:entries final-entries
+    {:entries (filterv valid-entry? final-entries)
      :pending-ops remaining-pending}))
 
 (defn clean-server-url
