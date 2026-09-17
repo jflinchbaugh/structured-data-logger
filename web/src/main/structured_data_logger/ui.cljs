@@ -558,7 +558,13 @@
        {:class "app-container"}
        (d/header
         {:class "app-header"}
-        (d/h1 {:class "app-title"} "Structured Data Journal"))
+        (d/div {:style {:display "flex"
+                        :align-items "center"
+                        :gap "10px"}}
+               (d/img {:src "icon-192.png"
+                       :alt "Structured Data Journal Icon"
+                       :class "app-logo"})
+               (d/h1 {:class "app-title"} "Structured Data Journal")))
        (d/nav
         {:class "nav-tabs"}
         (d/button {:class (str "tab-btn"

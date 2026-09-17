@@ -51,6 +51,13 @@ h1,
   color: var(--text);
 }
 
+.app-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: block;
+}
+
 .nav-tabs {
   display: flex;
   gap: 6px;

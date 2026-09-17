@@ -243,3 +243,15 @@
   [s]
   (boolean (and (string? s) (re-matches email-regex (str/trim s)))))
 
+(defn pwa-cache-urls
+  "Returns list of asset URLs to pre-cache for offline PWA operation."
+  [build-ts]
+  (let [ts-suffix (if (str/blank? (str build-ts)) "" (str "?ts=" build-ts))]
+    ["/"
+     "/index.html"
+     (str "/style.css" ts-suffix)
+     (str "/js/main.js" ts-suffix)
+     "/manifest.json"
+     "/icon-192.png"
+     "/icon-512.png"]))
+

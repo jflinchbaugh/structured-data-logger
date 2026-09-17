@@ -3,6 +3,7 @@ node_modules/
 out/
 public/js/
 public/index.html
+public/sw.js
 src/main/structured_data_logger/version.cljs
 
 .cpcache/

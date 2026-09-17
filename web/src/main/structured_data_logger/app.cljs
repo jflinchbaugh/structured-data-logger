@@ -11,8 +11,19 @@
   (tel/log! :info "rendering structured-data-logger")
   (.render root ($ react/StrictMode ($ AppRoot))))
 
+(defn register-service-worker! []
+  (when (exists? js/navigator.serviceWorker)
+    (-> (js/navigator.serviceWorker.register "sw.js")
+        (.then (fn [reg]
+                 (tel/log! :info (str "ServiceWorker registered with scope: "
+                                      (.-scope reg)))))
+        (.catch (fn [err]
+                  (tel/log! :warn (str "ServiceWorker registration failed: "
+                                       err)))))))
+
 (defn ^:export init []
-  (render))
+  (render)
+  (register-service-worker!))
 
 (defn ^:dev/after-load reload! []
   (render))

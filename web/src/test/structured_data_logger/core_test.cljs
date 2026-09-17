@@ -176,4 +176,17 @@
                 :received-txs [{:op "put" :entry nil}]})]
       (is (= [] (:entries res))))))
 
+(deftest pwa-offline-assets-test
+  (testing "pwa-cache-urls generates essential asset paths for offline caching"
+    (let [urls (sut/pwa-cache-urls "12345")]
+      (is (vector? urls))
+      (is (some #{"/"} urls))
+      (is (some #{"/index.html"} urls))
+      (is (some #{"/style.css?ts=12345"} urls))
+      (is (some #{"/js/main.js?ts=12345"} urls))
+      (is (some #{"/manifest.json"} urls))
+      (is (some #{"/icon-192.png"} urls))
+      (is (some #{"/icon-512.png"} urls)))))
+
+
 

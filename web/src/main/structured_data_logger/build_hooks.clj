@@ -6,9 +6,12 @@
   {:shadow.build/stage :flush}
   [state]
   (let [ts (str (System/currentTimeMillis))
-        src (slurp "src/html/index.html")]
+        index-src (slurp "src/html/index.html")
+        sw-src (slurp "src/html/sw.js")]
     (io/make-parents "public/index.html")
-    (spit "public/index.html" (str/replace src "{ts}" ts)))
+    (spit "public/index.html" (str/replace index-src "{ts}" ts))
+    (io/make-parents "public/sw.js")
+    (spit "public/sw.js" (str/replace sw-src "{ts}" ts)))
   state)
 
 (defn version-cljs
