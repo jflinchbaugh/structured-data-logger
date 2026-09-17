@@ -478,10 +478,10 @@
                                               (core/now-iso-str))))
                       (set-sync-status (str "Sync failed: status "
                                             (:status resp)))))
-                  (catch :default e
-                    (set-sync-status (str "Sync error: " (.-message e))))
-                  (finally
-                    (set! (.-current syncing-ref) false))))))]
+                        (catch :default e
+                          (set-sync-status (str "Sync error: " (.-message e))))
+                        (finally
+                          (set! (.-current syncing-ref) false)))))))))]
 
       ;; 1. Sync on mount / startup
       (hooks/use-effect
