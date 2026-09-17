@@ -300,6 +300,15 @@ input:focus, select:focus, textarea:focus {
   font-weight: 600;
 }
 
+.build-info {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+}
+
 @media (max-width: 480px) {
   .app-container {
     padding: 10px;

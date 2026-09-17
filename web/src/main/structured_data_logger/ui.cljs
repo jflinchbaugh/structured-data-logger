@@ -8,7 +8,8 @@
             [cljs-http.client :as http]
             [cljs.core.async :refer [go <!]]
             [structured-data-logger.core :as core]
-            [structured-data-logger.localstorage :as ls]))
+            [structured-data-logger.localstorage :as ls]
+            [structured-data-logger.version :as version]))
 
 (def starter-scripts
   {"Counts by Key"
@@ -383,7 +384,10 @@
 
      (when sync-status
        (d/div {:style {:marginTop "12px" :fontSize "0.9rem"}}
-              sync-status)))))
+              sync-status))
+
+     (d/div {:class "build-info"}
+            (str "Build: " version/build-date)))))
 
 (defnc AppRoot []
   (let [[active-tab set-active-tab] (hooks/use-state :entries)
