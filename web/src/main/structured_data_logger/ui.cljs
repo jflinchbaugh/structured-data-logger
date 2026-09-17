@@ -554,26 +554,26 @@
        {:class "app-container"}
        (d/header
         {:class "app-header"}
-        (d/h1 {:class "app-title"} "Structured Data Journal")
-        (d/nav
-         {:class "nav-tabs"}
-         (d/button {:class (str "tab-btn"
-                                (when (= active-tab :entries) " active"))
-                    :on-click #(set-active-tab :entries)}
-                   "Entries")
-         (d/button {:class (str "tab-btn"
-                                (when (= active-tab :new) " active"))
-                    :on-click #(do (set-editing-entry nil)
-                                   (set-active-tab :new))}
-                   "+ New")
-         (d/button {:class (str "tab-btn"
-                                (when (= active-tab :dashboard) " active"))
-                    :on-click #(set-active-tab :dashboard)}
-                   "Dashboard")
-         (d/button {:class (str "tab-btn"
-                                (when (= active-tab :settings) " active"))
-                    :on-click #(set-active-tab :settings)}
-                   "Sync / Settings")))
+        (d/h1 {:class "app-title"} "Structured Data Journal"))
+       (d/nav
+        {:class "nav-tabs"}
+        (d/button {:class (str "tab-btn"
+                               (when (= active-tab :entries) " active"))
+                   :on-click #(set-active-tab :entries)}
+                  "Entries")
+        (d/button {:class (str "tab-btn"
+                               (when (= active-tab :new) " active"))
+                   :on-click #(do (set-editing-entry nil)
+                                  (set-active-tab :new))}
+                  "+ New")
+        (d/button {:class (str "tab-btn"
+                               (when (= active-tab :dashboard) " active"))
+                   :on-click #(set-active-tab :dashboard)}
+                  "Dashboard")
+        (d/button {:class (str "tab-btn"
+                               (when (= active-tab :settings) " active"))
+                   :on-click #(set-active-tab :settings)}
+                  "Sync / Settings"))
 
        (case active-tab
          :entries
