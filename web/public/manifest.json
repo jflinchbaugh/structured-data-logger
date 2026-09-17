@@ -1,7 +1,7 @@
 {
   "name": "Structured Data Journal",
-  "short_name": "DataJournal",
-  "description": "Mobile-friendly offline structured journal and SCI analytics",
+  "short_name": "Structured Data Journal",
+  "description": "Mobile-friendly, offline structured journal and SCI analytics",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
