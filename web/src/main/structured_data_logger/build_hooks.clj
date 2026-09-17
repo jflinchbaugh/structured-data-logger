@@ -23,3 +23,14 @@
     (io/make-parents "src/main/structured_data_logger/version.cljs")
     (spit "src/main/structured_data_logger/version.cljs" content))
   state)
+
+(defn proxy-api?
+  "Predicate for shadow-cljs :dev-http :proxy-predicate.
+   Proxies only requests starting with /journal/api."
+  [request _config]
+  (let [path (or (when (instance? shadow.http.server.HttpRequest request)
+                   (.getRequestPath ^shadow.http.server.HttpRequest request))
+                 (:uri request)
+                 "")]
+    (or (= path "/journal/api")
+        (str/starts-with? path "/journal/api/"))))

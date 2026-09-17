@@ -264,3 +264,10 @@
                      :password (or (:password m) "")})]
     (not= (normalize saved) (normalize current))))
 
+(defn dev-proxy-path?
+  "Returns true if the given path should be proxied to the backend."
+  [path]
+  (let [p (str path)]
+    (boolean (or (= p "/journal/api")
+                 (str/starts-with? p "/journal/api/")))))
+

@@ -45,7 +45,7 @@ make dev
 Open your browser to:
 `http://localhost:3000`
 
-The dev server automatically proxies backend `/journal/` API requests to
+The dev server automatically proxies backend `/journal/api` requests to
 `http://localhost:6000`.
 
 ### 3. Running Tests

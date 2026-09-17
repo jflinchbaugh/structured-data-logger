@@ -208,6 +208,14 @@
                                                  :username ""
                                                  :password ""}))))))
 
-
-
-
+(deftest dev-proxy-predicate-test
+  (testing "dev-proxy-path? matches /journal/api and subpaths only"
+    (is (true? (sut/dev-proxy-path? "/journal/api")))
+    (is (true? (sut/dev-proxy-path? "/journal/api/")))
+    (is (true? (sut/dev-proxy-path? "/journal/api/ping")))
+    (is (true? (sut/dev-proxy-path? "/journal/api/sync/device-1")))
+    (is (false? (sut/dev-proxy-path? "/")))
+    (is (false? (sut/dev-proxy-path? "/index.html")))
+    (is (false? (sut/dev-proxy-path? "/journal")))
+    (is (false? (sut/dev-proxy-path? "/journal/")))
+    (is (false? (sut/dev-proxy-path? "/other/api")))))
