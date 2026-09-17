@@ -219,3 +219,10 @@
     ""
     (str/replace (str/trim (str u)) #"/+$" "")))
 
+(def email-regex #"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+(defn valid-email?
+  "Checks whether string s is a valid email address."
+  [s]
+  (boolean (and (string? s) (re-matches email-regex (str/trim s)))))
+

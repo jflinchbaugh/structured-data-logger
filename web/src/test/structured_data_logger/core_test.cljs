@@ -143,4 +143,15 @@
     (is (= "" (sut/clean-server-url nil)))
     (is (= "" (sut/clean-server-url "   ")))))
 
+(deftest email-validation-test
+  (testing "valid-email? identifies valid and invalid email addresses"
+    (is (true? (sut/valid-email? "user@example.com")))
+    (is (true? (sut/valid-email? "alice.smith+tag@sub.domain.org")))
+    (is (false? (sut/valid-email? "plainuser")))
+    (is (false? (sut/valid-email? "user@")))
+    (is (false? (sut/valid-email? "@example.com")))
+    (is (false? (sut/valid-email? "user@example")))
+    (is (false? (sut/valid-email? "")))
+    (is (false? (sut/valid-email? nil)))))
+
 

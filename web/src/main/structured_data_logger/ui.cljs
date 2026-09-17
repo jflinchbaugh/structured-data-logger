@@ -313,9 +313,10 @@
 
      (d/div
       {:class "form-group"}
-      (d/label "Username")
-      (d/input {:value username
-                :placeholder "Username"
+      (d/label "Email Address (Username)")
+      (d/input {:type "email"
+                :value username
+                :placeholder "user@example.com"
                 :on-change #(set-username (.. % -target -value))}))
 
      (d/div
@@ -394,11 +395,18 @@
 
           do-register!
           (fn [{:keys [user-id username password]}]
-            (if (or (str/blank? user-id)
-                    (str/blank? username)
-                    (str/blank? password))
+            (cond
+              (str/blank? user-id)
+              (set-sync-status "Please provide a Sync ID.")
+
+              (not (core/valid-email? username))
               (set-sync-status
-               "Please provide Sync ID, username, and password.")
+               "Username must be a valid email address.")
+
+              (str/blank? password)
+              (set-sync-status "Please provide a password.")
+
+              :else
               (do
                 (set-sync-status "Registering account with backend...")
                 (go
@@ -418,8 +426,8 @@
                             (set-config new-cfg)
                             (ls/set-item! :sync-config new-cfg))
                           (set-sync-status (str "Registered: " (:body resp))))
-                        (set-sync-status (str "Registration failed: status "
-                                              (:status resp)))))
+                        (set-sync-status (str "Registration failed: "
+                                              (:body resp)))))
                     (catch :default e
                       (set-sync-status (str "Registration error: "
                                             (.-message e)))))))))
@@ -431,13 +439,13 @@
               (let [{:keys [entries pending-ops last-tx-id config]}
                     (.-current state-ref)]
                 (if (or (str/blank? (:user-id config))
-                        (str/blank? (:username config)))
+                        (not (core/valid-email? (:username config))))
                   (do
                     (set! (.-current syncing-ref) false)
                     (when (and status-msg
                                (not= status-msg "Syncing on startup..."))
                       (set-sync-status
-                       "Configure username & Sync ID to enable sync.")))
+                       "Configure email username & Sync ID to enable sync.")))
                   (do
                     (when status-msg
                       (set-sync-status status-msg))

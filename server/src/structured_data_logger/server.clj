@@ -11,10 +11,16 @@
             [xtdb.api :as xt]
             [taoensso.telemere :as tel]
             [clojure.data.json :as json]
+            [clojure.string :as str]
             [tick.core :as t]))
 
 (def ^:const realm "structured-data-journal")
 (def ^:const base-url "/journal")
+(def email-regex #"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+(defn valid-email?
+  [s]
+  (boolean (and (string? s) (re-matches email-regex (str/trim s)))))
 
 (defonce storage (atom {}))
 (defonce server (atom nil))
@@ -88,8 +94,14 @@
         login (:login body)
         password (:password body)
         resource (format "%s/api/document/%s" base-url id)]
-    (if (get @storage id)
+    (cond
+      (not (valid-email? login))
+      (api-response 400 "Username must be a valid email address.")
+
+      (get @storage id)
       (api-response 200 (format "'%s' already exists" id))
+
+      :else
       (do
         (register-journal! id login password)
         (api-response

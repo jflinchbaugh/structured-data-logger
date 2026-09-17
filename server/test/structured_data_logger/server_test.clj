@@ -18,10 +18,19 @@
       (is (= "pong" (:body resp))))))
 
 (deftest auth-and-registration-test
+  (testing "Registration fails when username/login is not an email address"
+    (let [bad-req (-> (mock/request :post "/journal/api/register")
+                      (mock/json-body {:id "alice"
+                                       :login "not-an-email"
+                                       :password "secret123"}))
+          bad-resp (sut/app bad-req)]
+      (is (= 400 (:status bad-resp)))
+      (is (re-find #"email" (:body bad-resp)))))
+
   (testing "User registration and authentication"
     (let [reg-req (-> (mock/request :post "/journal/api/register")
                       (mock/json-body {:id "alice"
-                                       :login "alice"
+                                       :login "alice@example.com"
                                        :password "secret123"}))
           reg-resp (sut/app reg-req)]
       (is (= 200 (:status reg-resp)))
@@ -34,14 +43,16 @@
 
     (testing "Unauthorized access with bad credentials"
       (let [req (-> (mock/request :get "/journal/api/document/alice")
-                    (mock/header "authorization" "Basic YWxpY2U6d3Jvbmc="))
+                    (mock/header "authorization"
+                                 "Basic YWxpY2VAZXhhbXBsZS5jb206d3Jvbmc="))
             resp (sut/app req)]
         (is (= 401 (:status resp)))))
 
     (testing "Authorized access with valid credentials"
-      ;; Basic alice:secret123 -> YWxpY2U6c2VjcmV0MTIz
+      ;; Basic alice@example.com:secret123 -> YWxpY2VAZXhhbXBsZS5jb206c2VjcmV0MTIz
       (let [req (-> (mock/request :get "/journal/api/document/alice")
-                    (mock/header "authorization" "Basic YWxpY2U6c2VjcmV0MTIz"))
+                    (mock/header "authorization"
+                                 "Basic YWxpY2VAZXhhbXBsZS5jb206c2VjcmV0MTIz"))
             resp (sut/app req)]
         (is (= 200 (:status resp)))))))
 
