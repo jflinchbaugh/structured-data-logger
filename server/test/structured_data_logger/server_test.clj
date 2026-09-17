@@ -47,7 +47,7 @@
 
 (deftest journal-sync-endpoint-test
   (testing "Sync journal entries with structured key-value data"
-    (let [_ (sut/register-logger! "bob" "bob" "password123")
+    (let [_ (sut/register-journal! "bob" "bob" "password123")
           auth-header "Basic Ym9iOnBhc3N3b3JkMTIz"
           entry-1 {:id "e-1"
                    :timestamp "2026-09-13T10:00:00Z"
@@ -74,7 +74,7 @@
 
 (deftest robust-multi-client-sync-test
   (testing "Multi-client sync via append-only transaction log"
-    (let [_ (sut/register-logger! "carol" "carol" "pass456")
+    (let [_ (sut/register-journal! "carol" "carol" "pass456")
           auth "Basic Y2Fyb2w6cGFzczQ1Ng=="
           entry-1 {:id "e-1"
                    :timestamp "2026-09-14T08:00:00Z"

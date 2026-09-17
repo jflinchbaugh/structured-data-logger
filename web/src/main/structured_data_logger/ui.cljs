@@ -293,14 +293,12 @@
 
 (defnc SettingsView
   [{:keys [config on-save-config on-register on-sync sync-status]}]
-  (let [[server-url set-server-url]
-        (hooks/use-state (or (:server-url config) ""))
-        [user-id set-user-id]
-        (hooks/use-state (or (:user-id config) "demo"))
+  (let [[user-id set-user-id]
+        (hooks/use-state (or (:user-id config) ""))
         [username set-username]
-        (hooks/use-state (or (:username config) "demo"))
+        (hooks/use-state (or (:username config) ""))
         [password set-password]
-        (hooks/use-state (or (:password config) "demo"))]
+        (hooks/use-state (or (:password config) ""))]
 
     (d/div
      {:class "card"}
@@ -308,25 +306,16 @@
 
      (d/div
       {:class "form-group"}
-      (d/label "Backend URL")
-      (d/input {:value server-url
-                :placeholder "Leave blank for dev proxy or same origin"
-                :on-change #(set-server-url (.. % -target -value))})
-      (d/small {:style {:color "var(--muted)"
-                        :display "block"
-                        :marginTop "4px"}}
-               "Leave blank for dev proxy / same origin, or specify custom URL."))
-
-     (d/div
-      {:class "form-group"}
       (d/label "Sync ID / Device ID")
       (d/input {:value user-id
+                :placeholder "e.g. my-device"
                 :on-change #(set-user-id (.. % -target -value))}))
 
      (d/div
       {:class "form-group"}
       (d/label "Username")
       (d/input {:value username
+                :placeholder "Username"
                 :on-change #(set-username (.. % -target -value))}))
 
      (d/div
@@ -334,6 +323,7 @@
       (d/label "Password")
       (d/input {:type "password"
                 :value password
+                :placeholder "Password"
                 :on-change #(set-password (.. % -target -value))}))
 
      (d/div
@@ -344,8 +334,7 @@
       (d/button
        {:class "btn btn-primary"
         :on-click
-        #(let [new-cfg {:server-url (core/clean-server-url server-url)
-                        :user-id user-id
+        #(let [new-cfg {:user-id user-id
                         :username username
                         :password password}]
            (on-save-config new-cfg))}
@@ -354,8 +343,7 @@
       (d/button
        {:class "btn btn-secondary"
         :on-click
-        #(let [cfg {:server-url (core/clean-server-url server-url)
-                    :user-id user-id
+        #(let [cfg {:user-id user-id
                     :username username
                     :password password}]
            (on-register cfg))}
@@ -383,10 +371,9 @@
         [editing-entry set-editing-entry] (hooks/use-state nil)
         [config set-config]
         (hooks/use-state (or (ls/get-item :sync-config)
-                             {:server-url ""
-                              :user-id "demo"
-                              :username "demo"
-                              :password "demo"}))
+                             {:user-id ""
+                              :username ""
+                              :password ""}))
         [sync-status set-sync-status] (hooks/use-state nil)
         syncing-ref (hooks/use-ref false)
         state-ref (hooks/use-ref nil)]
@@ -406,56 +393,68 @@
               (ls/set-item! :pending-ops new-ops)))
 
           do-register!
-          (fn [{:keys [server-url user-id username password]}]
-            (set-sync-status "Registering account with backend...")
-            (go
-              (try
-                (let [url (str (core/clean-server-url server-url)
-                               "/journal/api/register")
-                      resp
-                      (<! (http/post
-                           url
-                           {:json-params {:id user-id
-                                          :login username
-                                          :password password}}))]
-                  (if (= 200 (:status resp))
-                    (do
-                      (let [new-cfg {:server-url (core/clean-server-url
-                                                  server-url)
-                                     :user-id user-id
-                                     :username username
-                                     :password password}]
-                        (set-config new-cfg)
-                        (ls/set-item! :sync-config new-cfg))
-                      (set-sync-status (str "Registered: " (:body resp))))
-                    (set-sync-status (str "Registration failed: status "
-                                          (:status resp)))))
-                (catch :default e
-                  (set-sync-status (str "Registration error: "
-                                        (.-message e)))))))
+          (fn [{:keys [user-id username password]}]
+            (if (or (str/blank? user-id)
+                    (str/blank? username)
+                    (str/blank? password))
+              (set-sync-status
+               "Please provide Sync ID, username, and password.")
+              (do
+                (set-sync-status "Registering account with backend...")
+                (go
+                  (try
+                    (let [url "/journal/api/register"
+                          resp
+                          (<! (http/post
+                               url
+                               {:json-params {:id user-id
+                                              :login username
+                                              :password password}}))]
+                      (if (= 200 (:status resp))
+                        (do
+                          (let [new-cfg {:user-id user-id
+                                         :username username
+                                         :password password}]
+                            (set-config new-cfg)
+                            (ls/set-item! :sync-config new-cfg))
+                          (set-sync-status (str "Registered: " (:body resp))))
+                        (set-sync-status (str "Registration failed: status "
+                                              (:status resp)))))
+                    (catch :default e
+                      (set-sync-status (str "Registration error: "
+                                            (.-message e)))))))))
 
           do-sync!
           (fn [& [status-msg]]
             (when-not (.-current syncing-ref)
               (set! (.-current syncing-ref) true)
-              (when status-msg
-                (set-sync-status status-msg))
-              (go
-                (try
-                  (let [{:keys [entries pending-ops last-tx-id config]}
-                        (.-current state-ref)
-                        in-flight (or pending-ops [])
-                        clean-url (core/clean-server-url (:server-url config))
-                        url (str clean-url
-                                 "/journal/api/sync/"
-                                 (:user-id config))
-                        resp
-                        (<! (http/post
-                             url
-                             {:basic-auth {:username (:username config)
-                                           :password (:password config)}
-                              :json-params {:since-tx-id (or last-tx-id 0)
-                                            :operations in-flight}}))]
+              (let [{:keys [entries pending-ops last-tx-id config]}
+                    (.-current state-ref)]
+                (if (or (str/blank? (:user-id config))
+                        (str/blank? (:username config)))
+                  (do
+                    (set! (.-current syncing-ref) false)
+                    (when (and status-msg
+                               (not= status-msg "Syncing on startup..."))
+                      (set-sync-status
+                       "Configure username & Sync ID to enable sync.")))
+                  (do
+                    (when status-msg
+                      (set-sync-status status-msg))
+                    (go
+                      (try
+                        (let [in-flight (or pending-ops [])
+                              url (str "/journal/api/sync/"
+                                       (:user-id config))
+                              resp
+                              (<! (http/post
+                                   url
+                                   {:basic-auth {:username (:username config)
+                                                 :password (:password config)}
+                                    :json-params {:since-tx-id
+                                                  (or last-tx-id 0)
+                                                  :operations
+                                                  in-flight}}))]
                     (if (= 200 (:status resp))
                       (let [body (:body resp)
                             server-last-tx (or (:last-tx-id body) last-tx-id)
