@@ -38,7 +38,7 @@
   {:chart-type :bar
    :data freqs})"})
 
-(defn- parse-val [v]
+(defn parse-val [v]
   (let [trimmed (str/trim (str v))]
     (cond
       (re-matches #"^-?\d+$" trimmed) (js/parseInt trimmed 10)
