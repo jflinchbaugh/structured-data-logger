@@ -12,6 +12,30 @@
       (is (= "aspirin" (get-in e [:data :pills])))
       (is (= 2 (get-in e [:data :qty]))))))
 
+(deftest to-kebab-case-test
+  (testing "to-kebab-case formats strings to lower-kebab-case"
+    (is (= "blood-pressure" (sut/to-kebab-case "Blood Pressure")))
+    (is (= "blood-pressure" (sut/to-kebab-case "BloodPressure")))
+    (is (= "blood-pressure" (sut/to-kebab-case "blood_pressure")))
+    (is (= "blood-pressure" (sut/to-kebab-case "blood-pressure")))
+    (is (= "mileage" (sut/to-kebab-case "Mileage")))
+    (is (= "heart-rate-bpm" (sut/to-kebab-case "heartRateBpm")))
+    (is (= "foo-bar" (sut/to-kebab-case "  foo   bar  ")))
+    (is (= "pill-count" (sut/to-kebab-case "Pill_Count")))
+    (is (= "item-123" (sut/to-kebab-case "item 123")))
+    (is (= "" (sut/to-kebab-case "")))
+    (is (= "" (sut/to-kebab-case nil))))
+
+  (testing "format-key-input allows typing hyphens and lower-cases input"
+    (is (= "blood-" (sut/format-key-input "blood-")))
+    (is (= "blood-" (sut/format-key-input "Blood-")))
+    (is (= "blood-" (sut/format-key-input "blood--")))
+    (is (= "blood-" (sut/format-key-input "blood---")))
+    (is (= "blood-sugar" (sut/format-key-input "blood--sugar")))
+    (is (= "blood-" (sut/format-key-input "blood ")))
+    (is (= "blood-pressure" (sut/format-key-input "Blood-Pressure")))
+    (is (= "pill-" (sut/format-key-input "Pill_")))))
+
 (deftest kv-analytics-test
   (let [sample-entries
         [{:id "1"
@@ -75,6 +99,9 @@
           res (sut/eval-sci "(reduce + (map #(get-in % [:data :miles]) entries))"
                             {:entries entries})]
       (is (= 30 (:result res)))
+      (is (nil? (:error res))))
+    (let [res (sut/eval-sci "(to-kebab-case \"Blood Pressure\")" {})]
+      (is (= "blood-pressure" (:result res)))
       (is (nil? (:error res))))))
 
 (deftest datetime-conversion-test

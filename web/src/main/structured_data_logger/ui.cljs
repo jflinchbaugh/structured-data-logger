@@ -123,29 +123,32 @@
                            []
                            (core/all-known-values all-entries (:key item)))
                 dl-id (str "row-vals-dl-" idx)]
-            (d/div
-             {:key (str idx) :class "kv-pair"}
-             (d/input {:value (:key item)
-                       :placeholder "Key"
-                       :list "known-keys-datalist"
-                       :on-change
-                       #(let [v (.. % -target -value)]
-                          (set-kv-list (assoc-in kv-list [idx :key] v)))})
-             (d/input {:value (:val item)
-                       :placeholder "Value"
-                       :list dl-id
-                       :on-change
-                       #(let [v (.. % -target -value)]
-                          (set-kv-list (assoc-in kv-list [idx :val] v)))})
-             (d/datalist
-              {:id dl-id}
-              (for [v row-vals]
-                (d/option {:key (str "rv-" idx "-" v) :value v})))
-             (d/button {:class "btn btn-danger btn-small"
-                        :on-click
-                        #(set-kv-list (vec (concat (subvec kv-list 0 idx)
-                                                   (subvec kv-list (inc idx)))))}
-                       "✕"))))))
+             (d/div
+              {:key (str idx) :class "kv-pair"}
+              (d/input {:value (:key item)
+                        :placeholder "key-name"
+                        :list "known-keys-datalist"
+                        :auto-capitalize "none"
+                        :auto-correct "off"
+                        :spell-check false
+                        :on-change
+                        #(let [v (core/format-key-input (.. % -target -value))]
+                           (set-kv-list (assoc-in kv-list [idx :key] v)))})
+              (d/input {:value (:val item)
+                        :placeholder "Value"
+                        :list dl-id
+                        :on-change
+                        #(let [v (.. % -target -value)]
+                           (set-kv-list (assoc-in kv-list [idx :val] v)))})
+              (d/datalist
+               {:id dl-id}
+               (for [v row-vals]
+                 (d/option {:key (str "rv-" idx "-" v) :value v})))
+              (d/button {:class "btn btn-danger btn-small"
+                         :on-click
+                         #(set-kv-list (vec (concat (subvec kv-list 0 idx)
+                                                    (subvec kv-list (inc idx)))))}
+                        "✕"))))))
 
      (d/div
       {:class "form-group" :style {:borderTop "1px dashed var(--border)"
@@ -156,7 +159,11 @@
        (d/input {:placeholder "Key name (e.g. pills, mileage)"
                  :value new-key-name
                  :list "known-keys-datalist"
-                 :on-change #(set-new-key-name (.. % -target -value))})
+                 :auto-capitalize "none"
+                 :auto-correct "off"
+                 :spell-check false
+                 :on-change #(set-new-key-name
+                              (core/format-key-input (.. % -target -value)))})
        (d/input {:placeholder "Value (numeric, text)"
                  :value new-key-val
                  :list "new-key-values-datalist"
@@ -165,7 +172,7 @@
         {:class "btn btn-secondary"
          :on-click
          #(when (not (str/blank? new-key-name))
-            (set-kv-list (conj kv-list {:key (str/trim new-key-name)
+            (set-kv-list (conj kv-list {:key (core/to-kebab-case new-key-name)
                                         :val (str/trim new-key-val)}))
             (set-new-key-name "")
             (set-new-key-val ""))}
@@ -178,10 +185,11 @@
          (d/div
           {:class "chip-row"}
           (for [k (take 10 blended-k)]
-            (d/span {:key (str "key-" k)
-                     :class "chip"
-                     :on-click #(set-new-key-name (name k))}
-                    (name k))))))
+            (let [k-str (core/to-kebab-case (name k))]
+              (d/span {:key (str "key-" k)
+                       :class "chip"
+                       :on-click #(set-new-key-name k-str)}
+                      k-str))))))
 
       (when (not (str/blank? new-key-name))
         (let [kw (keyword (str/trim new-key-name))
@@ -211,15 +219,16 @@
        {:class "btn btn-primary"
         :on-click
         #(let [pending-pair (when (not (str/blank? new-key-name))
-                              {:key (str/trim new-key-name)
+                              {:key (core/to-kebab-case new-key-name)
                                :val (str/trim new-key-val)})
                effective-kv (if pending-pair
                               (conj kv-list pending-pair)
                               kv-list)
                data-map (into {}
                               (for [{:keys [key val]} effective-kv
-                                    :when (not (str/blank? key))]
-                                [(keyword (str/trim key)) (parse-val val)]))
+                                    :let [k-str (core/to-kebab-case key)]
+                                    :when (not (str/blank? k-str))]
+                                [(keyword k-str) (parse-val val)]))
                desc (str/trim (or description ""))]
            (if (and (str/blank? desc) (empty? data-map))
              (set-error-msg

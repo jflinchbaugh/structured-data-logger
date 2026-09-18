@@ -33,6 +33,31 @@
 (defn- generate-uuid []
   (str (random-uuid)))
 
+(defn to-kebab-case
+  "Converts input string into lower-kebab-case format."
+  [s]
+  (if (str/blank? s)
+    ""
+    (-> (str s)
+        str/trim
+        (str/replace #"([a-z0-9])([A-Z])" "$1-$2")
+        (str/replace #"[_\s]+" "-")
+        (str/replace #"-+" "-")
+        (str/replace #"^-+|-+$" "")
+        str/lower-case)))
+
+(defn format-key-input
+  "Normalizes key input as user types: lower-cases and turns spaces/underscores
+   to hyphens while preserving typed hyphens, collapsing duplicate hyphens."
+  [s]
+  (if (str/blank? s)
+    ""
+    (-> (str s)
+        (str/replace #"([a-z0-9])([A-Z])" "$1-$2")
+        (str/replace #"[_\s]+" "-")
+        (str/replace #"-+" "-")
+        str/lower-case)))
+
 (defn create-entry
   "Creates a structured entry map with id, timestamp, description, and data."
   [{:keys [id timestamp description data]}]
@@ -141,7 +166,8 @@
                         'recent-values recent-values
                         'common-values common-values
                         'all-known-keys all-known-keys
-                        'all-known-values all-known-values}
+                        'all-known-values all-known-values
+                        'to-kebab-case to-kebab-case}
                        sym-bindings)})))
 
 (defn eval-sci
