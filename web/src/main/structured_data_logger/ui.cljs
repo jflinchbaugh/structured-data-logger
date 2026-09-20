@@ -45,6 +45,18 @@
       (re-matches #"^-?\d+\.\d+$" trimmed) (js/parseFloat trimmed)
       :else trimmed)))
 
+(defn confirm-dialog
+  "Prompts the user with a confirmation dialog. Defaults to js/window.confirm."
+  [msg]
+  (if (exists? js/window)
+    (js/confirm msg)
+    false))
+
+(defn confirm-delete?
+  "Asks confirmation to delete an entry."
+  [_entry]
+  (confirm-dialog "Are you sure you want to delete this entry?"))
+
 (defnc BarChart [{:keys [data]}]
   (let [entries (seq data)
         max-val (if entries (apply max (map second entries)) 1)]
@@ -635,19 +647,20 @@
                     {:class "btn btn-danger btn-small"
                      :on-click
                      (fn []
-                       (let [id (:id entry)
-                             del-op (when (and (string? id)
-                                               (not (str/blank? id)))
-                                      (core/create-delete-op id))
-                             updated-entries (if del-op
-                                               (core/apply-transaction
-                                                clean-entries del-op)
-                                               clean-entries)
-                             updated-ops (if del-op
-                                           (conj pending-ops del-op)
-                                           pending-ops)]
-                         (save-local! updated-entries updated-ops)
-                         (js/setTimeout do-sync! 50)))}
+                       (when (confirm-delete? entry)
+                         (let [id (:id entry)
+                               del-op (when (and (string? id)
+                                                 (not (str/blank? id)))
+                                        (core/create-delete-op id))
+                               updated-entries (if del-op
+                                                 (core/apply-transaction
+                                                  clean-entries del-op)
+                                                 clean-entries)
+                               updated-ops (if del-op
+                                             (conj pending-ops del-op)
+                                             pending-ops)]
+                           (save-local! updated-entries updated-ops)
+                           (js/setTimeout do-sync! 50))))}
                     "Delete")))
                  (d/div {:class "entry-desc"} (:description entry))
                  (when (seq (:data entry))
