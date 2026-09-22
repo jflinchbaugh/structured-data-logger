@@ -9,16 +9,31 @@
   (str (t/instant)))
 
 (defn to-local-datetime-input
-  "Converts an ISO timestamp to YYYY-MM-DDTHH:mm for datetime-local input."
+  "Converts an ISO timestamp to YYYY-MM-DDTHH:mm:ss for datetime-local input."
   [ts-str]
   (try
     (let [d (if (str/blank? ts-str) (js/Date.) (js/Date. ts-str))
           local-ms (- (.getTime d) (* (.getTimezoneOffset d) 60000))]
-      (-> (js/Date. local-ms) (.toISOString) (.slice 0 16)))
+      (-> (js/Date. local-ms) (.toISOString) (.slice 0 19)))
     (catch :default _
       (-> (js/Date. (- (js/Date.now) (* (.getTimezoneOffset (js/Date.)) 60000)))
           (.toISOString)
-          (.slice 0 16)))))
+          (.slice 0 19)))))
+
+(defn format-local-datetime
+  "Formats an ISO-8601 UTC timestamp string into local YYYY-MM-DD HH:mm:ss for display."
+  [ts-str]
+  (if (str/blank? ts-str)
+    ""
+    (try
+      (let [d (js/Date. ts-str)
+            local-ms (- (.getTime d) (* (.getTimezoneOffset d) 60000))]
+        (-> (js/Date. local-ms)
+            (.toISOString)
+            (.slice 0 19)
+            (str/replace "T" " ")))
+      (catch :default _
+        (str ts-str)))))
 
 (defn from-local-datetime-input
   "Converts a datetime-local input value to an ISO-8601 UTC string."

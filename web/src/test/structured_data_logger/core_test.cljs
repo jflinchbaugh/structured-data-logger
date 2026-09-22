@@ -105,15 +105,22 @@
       (is (nil? (:error res))))))
 
 (deftest datetime-conversion-test
-  (testing "to-local-datetime-input formats for HTML5 datetime-local"
+  (testing "to-local-datetime-input formats for HTML5 datetime-local with seconds"
     (let [formatted (sut/to-local-datetime-input "2026-09-13T12:00:00Z")]
       (is (string? formatted))
-      (is (re-matches #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$" formatted))))
+      (is (re-matches #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$" formatted))))
 
   (testing "from-local-datetime-input parses back to ISO UTC string"
     (let [iso-str (sut/from-local-datetime-input "2026-09-13T12:00")]
       (is (string? iso-str))
-      (is (re-matches #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*" iso-str)))))
+      (is (re-matches #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*" iso-str))))
+
+  (testing "format-local-datetime formats UTC timestamp into local display string with seconds"
+    (let [formatted (sut/format-local-datetime "2026-09-13T12:00:00Z")]
+      (is (string? formatted))
+      (is (re-matches #"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$" formatted)))
+    (is (= "" (sut/format-local-datetime "")))
+    (is (= "" (sut/format-local-datetime nil)))))
 
 (deftest sync-reconciliation-test
   (testing "apply-transactions handles puts and deletes"

@@ -113,6 +113,7 @@
       {:class "form-group"}
       (d/label "Timestamp")
       (d/input {:type "datetime-local"
+                :step "1"
                 :value timestamp
                 :on-change #(set-timestamp (.. % -target -value))}))
 
@@ -635,7 +636,7 @@
                  {:key (:id entry) :class "entry-list-item"}
                  (d/div
                   {:class "entry-header"}
-                  (d/span (:timestamp entry))
+                  (d/span (core/format-local-datetime (:timestamp entry)))
                   (d/div
                    (d/button
                     {:class "btn btn-secondary btn-small"
