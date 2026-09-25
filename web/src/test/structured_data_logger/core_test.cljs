@@ -164,7 +164,32 @@
       ;; Entries contains base-entry, e3-remote from server, and e2-edit
       (is (= 3 (count (:entries reconciled))))
       (is (= #{"e1" "e2" "e3"}
-             (set (map :id (:entries reconciled))))))))
+             (set (map :id (:entries reconciled)))))))
+
+  (testing "reconcile-client-state does not duplicate on full replay from tx 0"
+    (let [e1 {:id "1" :timestamp "2026-09-10T10:00:00Z" :description "One"}
+          e2 {:id "2" :timestamp "2026-09-10T11:00:00Z" :description "Two"}
+          full-txs [{:tx-id 1 :op "put" :entry e1}
+                    {:tx-id 2 :op "put" :entry e2}]
+          reconciled (sut/reconcile-client-state
+                      {:entries [e1 e2]
+                       :pending-ops []
+                       :in-flight-ops []
+                       :received-txs full-txs})]
+      (is (= 2 (count (:entries reconciled))))
+      (is (= ["1" "2"] (mapv :id (:entries reconciled)))))))
+
+(deftest prepare-sync-payload-test
+  (testing "prepare-sync-payload uses last-tx-id for incremental sync"
+    (is (= {:since-tx-id 5 :operations []}
+           (sut/prepare-sync-payload {:last-tx-id 5 :pending-ops []}))))
+  (testing "prepare-sync-payload forces 0 when reset or force-since-tx-id is 0"
+    (is (= {:since-tx-id 0 :operations []}
+           (sut/prepare-sync-payload {:last-tx-id 5
+                                     :pending-ops []
+                                     :force-since-tx-id 0})))
+    (is (= {:since-tx-id 0 :operations []}
+           (sut/prepare-sync-payload {:last-tx-id nil :pending-ops []})))))
 
 (deftest server-url-cleaning-test
   (testing "clean-server-url normalizes trailing slashes and blank strings"

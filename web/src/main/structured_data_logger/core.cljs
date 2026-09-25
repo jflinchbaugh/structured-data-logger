@@ -345,6 +345,15 @@
     {:entries (filterv valid-entry? final-entries)
      :pending-ops remaining-pending}))
 
+(defn prepare-sync-payload
+  "Constructs sync request payload. If force-since-tx-id is provided,
+   it overrides last-tx-id (useful for resetting to 0 on settings change)."
+  [{:keys [last-tx-id pending-ops force-since-tx-id]}]
+  {:since-tx-id (if (some? force-since-tx-id)
+                  force-since-tx-id
+                  (or last-tx-id 0))
+   :operations (or pending-ops [])})
+
 (defn clean-server-url
   "Trims whitespace and strips trailing slashes from server URL."
   [u]

@@ -483,47 +483,8 @@
                 (set-pending-ops new-ops)
                 (ls/set-item! :pending-ops new-ops))))
 
-          do-register!
-          (fn [{:keys [user-id username password]}]
-            (cond
-              (str/blank? user-id)
-              (set-sync-status "Please provide a Sync ID.")
-
-              (not (core/valid-email? username))
-              (set-sync-status
-               "Username must be a valid email address.")
-
-              (str/blank? password)
-              (set-sync-status "Please provide a password.")
-
-              :else
-              (do
-                (set-sync-status "Registering account with backend...")
-                (go
-                  (try
-                    (let [url "/journal/api/register"
-                          resp
-                          (<! (http/post
-                               url
-                               {:json-params {:id user-id
-                                              :login username
-                                              :password password}}))]
-                      (if (= 200 (:status resp))
-                        (do
-                          (let [new-cfg {:user-id user-id
-                                         :username username
-                                         :password password}]
-                            (set-config new-cfg)
-                            (ls/set-item! :sync-config new-cfg))
-                          (set-sync-status (str "Registered: " (:body resp))))
-                        (set-sync-status (str "Registration failed: "
-                                              (:body resp)))))
-                    (catch :default e
-                      (set-sync-status (str "Registration error: "
-                                            (.-message e)))))))))
-
           do-sync!
-          (fn [& [status-msg]]
+          (fn [& [status-msg force-since-tx-id]]
             (let [msg (when (string? status-msg) status-msg)]
               (when-not (.-current syncing-ref)
                 (set! (.-current syncing-ref) true)
@@ -544,15 +505,17 @@
                         (let [in-flight (or pending-ops [])
                               url (str "/journal/api/sync/"
                                        (:user-id config))
+                              payload (core/prepare-sync-payload
+                                       {:last-tx-id last-tx-id
+                                        :pending-ops in-flight
+                                        :force-since-tx-id
+                                        force-since-tx-id})
                               resp
                               (<! (http/post
                                    url
                                    {:basic-auth {:username (:username config)
                                                  :password (:password config)}
-                                    :json-params {:since-tx-id
-                                                  (or last-tx-id 0)
-                                                  :operations
-                                                  in-flight}}))]
+                                    :json-params payload}))]
                           (if (= 200 (:status resp))
                             (let [body (:body resp)
                                   server-last-tx (or (:last-tx-id body)
@@ -588,6 +551,54 @@
                                                 (.-message e))))
                         (finally
                           (set! (.-current syncing-ref) false))))))))))
+
+          do-register!
+          (fn [{:keys [user-id username password]}]
+            (cond
+              (str/blank? user-id)
+              (set-sync-status "Please provide a Sync ID.")
+
+              (not (core/valid-email? username))
+              (set-sync-status
+               "Username must be a valid email address.")
+
+              (str/blank? password)
+              (set-sync-status "Please provide a password.")
+
+              :else
+              (do
+                (set-sync-status "Registering account with backend...")
+                (go
+                  (try
+                    (let [url "/journal/api/register"
+                          resp
+                          (<! (http/post
+                               url
+                               {:json-params {:id user-id
+                                              :login username
+                                              :password password}}))]
+                      (if (= 200 (:status resp))
+                        (do
+                          (let [new-cfg {:user-id user-id
+                                         :username username
+                                         :password password}]
+                            (set-config new-cfg)
+                            (ls/set-item! :sync-config new-cfg)
+                            (set-last-tx-id 0)
+                            (ls/set-item! :last-tx-id 0)
+                            (when (.-current state-ref)
+                              (set! (.-current state-ref)
+                                    (assoc (.-current state-ref)
+                                           :config new-cfg
+                                           :last-tx-id 0))))
+                          (set-sync-status (str "Registered: " (:body resp)))
+                          (js/setTimeout
+                           #(do-sync! "Syncing full history..." 0) 50))
+                        (set-sync-status (str "Registration failed: "
+                                              (:body resp)))))
+                    (catch :default e
+                      (set-sync-status (str "Registration error: "
+                                            (.-message e)))))))))
 
           navigate-to!
           (fn [tab]
@@ -756,7 +767,16 @@
               (fn [new-cfg]
                 (set-config new-cfg)
                 (ls/set-item! :sync-config new-cfg)
-                (set-sync-status "Settings saved."))
+                (set-last-tx-id 0)
+                (ls/set-item! :last-tx-id 0)
+                (when (.-current state-ref)
+                  (set! (.-current state-ref)
+                        (assoc (.-current state-ref)
+                               :config new-cfg
+                               :last-tx-id 0)))
+                (set-sync-status "Settings saved. Syncing full history...")
+                (js/setTimeout
+                 #(do-sync! "Syncing full history..." 0) 50))
               :on-register do-register!
               :on-sync do-sync!}))
 
