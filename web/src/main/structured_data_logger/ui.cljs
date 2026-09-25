@@ -45,6 +45,16 @@
       (re-matches #"^-?\d+\.\d+$" trimmed) (js/parseFloat trimmed)
       :else trimmed)))
 
+(defn format-kv
+  "Formats a key and value for display. When a key doesn't have a value,
+   does not show the ':'."
+  [k v]
+  (let [k-str (name k)
+        v-str (when (some? v) (str v))]
+    (if (or (nil? v-str) (str/blank? v-str))
+      k-str
+      (str k-str ": " v-str))))
+
 (defn confirm-dialog
   "Prompts the user with a confirmation dialog. Defaults to js/window.confirm."
   [msg]
@@ -669,7 +679,7 @@
                     {:class "entry-kv-list"}
                     (for [[k v] (:data entry)]
                       (d/span {:key (str k) :class "badge"}
-                              (str (name k) ": " v))))))))))
+                              (format-kv k v))))))))))
 
          :new
          ($ EntryForm

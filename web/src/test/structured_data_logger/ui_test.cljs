@@ -23,3 +23,15 @@
         (is (= ["Are you sure you want to delete this entry?"] @prompts)))
       (with-redefs [ui/confirm-dialog (fn [_] false)]
         (is (false? (ui/confirm-delete? {:description "Blood pressure reading"})))))))
+
+(deftest format-kv-test
+  (testing "format-kv displays key and value with colon when value is present"
+    (is (= "food: oatmeal" (ui/format-kv :food "oatmeal")))
+    (is (= "count: 42" (ui/format-kv :count 42)))
+    (is (= "temp: 98.6" (ui/format-kv :temp 98.6)))
+    (is (= "active: false" (ui/format-kv :active false))))
+  (testing "format-kv displays only key without colon when value is empty"
+    (is (= "fasting" (ui/format-kv :fasting nil)))
+    (is (= "fasting" (ui/format-kv :fasting "")))
+    (is (= "fasting" (ui/format-kv :fasting "   ")))
+    (is (= "tag" (ui/format-kv "tag" "")))))
