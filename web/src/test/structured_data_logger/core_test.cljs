@@ -1,5 +1,6 @@
 (ns structured-data-logger.core-test
   (:require [cljs.test :refer [deftest is testing]]
+            [tick.core :as t]
             [structured-data-logger.core :as sut]))
 
 (deftest entry-creation-test

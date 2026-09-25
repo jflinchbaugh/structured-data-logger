@@ -165,6 +165,78 @@
                   (catch :default _ 0))))
          vec)))
 
+(defn time-minus
+  ([] (t/-))
+  ([arg] (t/- arg))
+  ([arg & args]
+   (reduce (fn [acc d]
+             (try
+               (t/- acc d)
+               (catch :default _
+                 (t/<< acc d))))
+           arg
+           args)))
+
+(defn time-plus
+  ([] (t/+))
+  ([arg] (t/+ arg))
+  ([arg & args]
+   (reduce (fn [acc d]
+             (try
+               (t/+ acc d)
+               (catch :default _
+                 (t/>> acc d))))
+           arg
+           args)))
+
+(def tick-sci-ns
+  {'instant t/instant
+   'inst t/inst
+   'now t/now
+   'today t/today
+   'epoch t/epoch
+   'tomorrow t/tomorrow
+   'yesterday t/yesterday
+   'date t/date
+   'time t/time
+   'date-time t/date-time
+   'year t/year
+   'month t/month
+   'day-of-month t/day-of-month
+   'day-of-week t/day-of-week
+   'hour t/hour
+   'minute t/minute
+   'second t/second
+   'millisecond t/millisecond
+   'duration t/duration
+   'new-duration t/new-duration
+   'new-period t/new-period
+   'between t/between
+   'nanos t/nanos
+   'micros t/micros
+   'millis t/millis
+   'seconds t/seconds
+   'minutes t/minutes
+   'hours t/hours
+   'days t/days
+   'months t/months
+   'years t/years
+   'beginning t/beginning
+   'end t/end
+   'truncate t/truncate
+   'ago t/ago
+   'hence t/hence
+   'int t/int
+   '>> t/>>
+   '<< t/<<
+   '> t/>
+   '< t/<
+   '>= t/>=
+   '<= t/<=
+   '= t/=
+   '- time-minus
+   '+ time-plus})
+
 (defn make-sci-ctx
   "Builds a SCI context populated with data analysis helper functions."
   [context-map]
@@ -172,7 +244,10 @@
                            (map (fn [[k v]] [(symbol (name k)) v]))
                            context-map)]
     (sci/init
-     {:bindings (merge {'average average
+     {:namespaces {'tick.core tick-sci-ns
+                   't tick-sci-ns}
+      :aliases {'t 'tick.core}
+      :bindings (merge {'average average
                         'stddev stddev
                         'intervals intervals
                         'recent-keys recent-keys
