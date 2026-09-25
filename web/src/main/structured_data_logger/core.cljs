@@ -402,3 +402,22 @@
       "/journal/"
       "/")))
 
+(defn tab->hash
+  "Converts a tab keyword to a URL hash string."
+  [tab]
+  (case tab
+    :new "#new"
+    :dashboard "#dashboard"
+    :settings "#settings"
+    "#entries"))
+
+(defn hash->tab
+  "Converts a URL hash string (with or without '#') into a tab keyword."
+  [h]
+  (let [clean (some-> h str (str/replace #"^#" "") str/trim str/lower-case)]
+    (case clean
+      "new" :new
+      "dashboard" :dashboard
+      "settings" :settings
+      :entries)))
+

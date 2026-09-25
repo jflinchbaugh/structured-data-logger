@@ -428,8 +428,23 @@
      (d/div {:class "build-info"}
             (str "Build: " version/build-date)))))
 
+(defn current-window-tab
+  "Reads the active tab from window.location.hash."
+  []
+  (if (exists? js/window)
+    (core/hash->tab (.-hash (.-location js/window)))
+    :entries))
+
+(defn set-window-hash!
+  "Updates window.location.hash to reflect the active tab."
+  [tab]
+  (when (exists? js/window)
+    (let [h (core/tab->hash tab)]
+      (when (not= (.-hash (.-location js/window)) h)
+        (set! (.-hash (.-location js/window)) h)))))
+
 (defnc AppRoot []
-  (let [[active-tab set-active-tab] (hooks/use-state :entries)
+  (let [[active-tab set-active-tab] (hooks/use-state current-window-tab)
         [entries set-entries]
         (hooks/use-state (filterv core/valid-entry?
                                   (or (ls/get-item :journal-entries) [])))
@@ -572,7 +587,12 @@
                           (set-sync-status (str "Sync error: "
                                                 (.-message e))))
                         (finally
-                          (set! (.-current syncing-ref) false))))))))))]
+                          (set! (.-current syncing-ref) false))))))))))
+
+          navigate-to!
+          (fn [tab]
+            (set-active-tab tab)
+            (set-window-hash! tab))]
 
       ;; 1. Sync on mount / startup
       (hooks/use-effect
@@ -593,6 +613,22 @@
            (.removeEventListener js/window "online" on-online)
            (.removeEventListener js/document "visibilitychange" on-vis))))
 
+      ;; 3. Sync active tab with window hash changes (back/forward / links)
+      (hooks/use-effect
+       :once
+       (let [on-hash (fn []
+                       (let [t (current-window-tab)]
+                         (set-active-tab t)
+                         (when (not= t :new)
+                           (set-editing-entry nil))))]
+         (when (exists? js/window)
+           (.addEventListener js/window "hashchange" on-hash)
+           (when (str/blank? (.-hash (.-location js/window)))
+             (set-window-hash! active-tab)))
+         (fn []
+           (when (exists? js/window)
+             (.removeEventListener js/window "hashchange" on-hash)))))
+
       (d/div
        {:class "app-container"}
        (d/header
@@ -606,38 +642,43 @@
                (d/h1 {:class "app-title"} "Structured Data Journal")))
        (d/nav
         {:class "nav-tabs"}
-        (d/button {:class (str "tab-btn"
-                               (when (= active-tab :entries) " active"))
-                   :on-click #(set-active-tab :entries)}
-                  "Entries")
-        (d/button {:class (str "tab-btn"
-                               (when (= active-tab :new) " active"))
-                   :on-click #(do (set-editing-entry nil)
-                                  (set-active-tab :new))}
-                  "+ New")
-        (d/button {:class (str "tab-btn"
-                               (when (= active-tab :dashboard) " active"))
-                   :on-click #(set-active-tab :dashboard)}
-                  "Dashboard")
-        (d/button {:class (str "tab-btn"
-                               (when (= active-tab :settings) " active"))
-                   :on-click #(set-active-tab :settings)}
-                  "Sync / Settings"))
+        (d/a {:class (str "tab-btn"
+                          (when (= active-tab :entries) " active"))
+              :href "#entries"
+              :on-click #(navigate-to! :entries)}
+             "Entries")
+        (d/a {:class (str "tab-btn"
+                          (when (= active-tab :new) " active"))
+              :href "#new"
+              :on-click #(do (set-editing-entry nil)
+                             (navigate-to! :new))}
+             "+ New")
+        (d/a {:class (str "tab-btn"
+                          (when (= active-tab :dashboard) " active"))
+              :href "#dashboard"
+              :on-click #(navigate-to! :dashboard)}
+             "Dashboard")
+        (d/a {:class (str "tab-btn"
+                          (when (= active-tab :settings) " active"))
+              :href "#settings"
+              :on-click #(navigate-to! :settings)}
+             "Sync / Settings"))
 
        (case active-tab
          :entries
          (let [clean-entries (filterv core/valid-entry? (or entries []))]
            (d/div
-            {:class "card"}
+            {:id "entries" :class "card"}
             (d/div {:style {:display "flex"
                             :justify-content "space-between"
                             :align-items "center"
                             :marginBottom "12px"}}
                    (d/h3 {:class "card-title" :style {:margin 0}}
                          (str "Entries (" (count clean-entries) ")"))
-                   (d/button {:class "btn btn-primary btn-small"
-                              :on-click #(set-active-tab :new)}
-                             "+ Add Entry"))
+                   (d/a {:class "btn btn-primary btn-small"
+                         :href "#new"
+                         :on-click #(navigate-to! :new)}
+                        "+ Add Entry"))
             (if (empty? clean-entries)
               (d/p {:style {:color "var(--muted)" :padding "16px 0"}}
                    "No journal entries recorded yet. Click '+ Add Entry' to create one.")
@@ -648,11 +689,12 @@
                   {:class "entry-header"}
                   (d/span (core/format-local-datetime (:timestamp entry)))
                   (d/div
-                   (d/button
+                   (d/a
                     {:class "btn btn-secondary btn-small"
+                     :href "#new"
                      :style {:marginRight "6px"}
                      :on-click #(do (set-editing-entry entry)
-                                    (set-active-tab :new))}
+                                    (navigate-to! :new))}
                     "Edit")
                    (d/button
                     {:class "btn btn-danger btn-small"
@@ -682,34 +724,40 @@
                               (format-kv k v))))))))))
 
          :new
-         ($ EntryForm
-            {:initial-entry editing-entry
-             :all-entries entries
-             :on-cancel #(set-active-tab :entries)
-             :on-save
-             (fn [entry]
-               (let [put-op (core/create-put-op entry)
-                     updated-entries (core/apply-transaction entries put-op)
-                     updated-ops (conj pending-ops put-op)]
-                 (save-local! updated-entries updated-ops)
-                 (set-editing-entry nil)
-                 (set-active-tab :entries)
-                 (js/setTimeout do-sync! 50)))})
+         (d/div
+          {:id "new"}
+          ($ EntryForm
+             {:initial-entry editing-entry
+              :all-entries entries
+              :on-cancel #(navigate-to! :entries)
+              :on-save
+              (fn [entry]
+                (let [put-op (core/create-put-op entry)
+                      updated-entries (core/apply-transaction entries put-op)
+                      updated-ops (conj pending-ops put-op)]
+                  (save-local! updated-entries updated-ops)
+                  (set-editing-entry nil)
+                  (navigate-to! :entries)
+                  (js/setTimeout do-sync! 50)))}))
 
          :dashboard
-         ($ DashboardView {:entries entries})
+         (d/div
+          {:id "dashboard"}
+          ($ DashboardView {:entries entries}))
 
          :settings
-         ($ SettingsView
-            {:config config
-             :pending-ops pending-ops
-             :sync-status sync-status
-             :on-save-config
-             (fn [new-cfg]
-               (set-config new-cfg)
-               (ls/set-item! :sync-config new-cfg)
-               (set-sync-status "Settings saved."))
-             :on-register do-register!
-             :on-sync do-sync!})
+         (d/div
+          {:id "settings"}
+          ($ SettingsView
+             {:config config
+              :pending-ops pending-ops
+              :sync-status sync-status
+              :on-save-config
+              (fn [new-cfg]
+                (set-config new-cfg)
+                (ls/set-item! :sync-config new-cfg)
+                (set-sync-status "Settings saved."))
+              :on-register do-register!
+              :on-sync do-sync!}))
 
          nil)))))

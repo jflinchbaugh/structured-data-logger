@@ -77,3 +77,19 @@
           (when (= script-name "Recent Window (Last 7 Days)")
             (is (= 2 (count (:result res)))
                 "Recent Window should match current entries")))))))
+
+(deftest window-tab-hash-test
+  (testing "current-window-tab defaults to :entries when window has no hash"
+    (is (= :entries (ui/current-window-tab))))
+  (testing "window hash synchronization with mock window"
+    (let [fake-location #js {:hash "#dashboard"}
+          fake-window #js {:location fake-location}]
+      (js/goog.object.set js/goog.global "window" fake-window)
+      (try
+        (is (= :dashboard (ui/current-window-tab)))
+        (ui/set-window-hash! :settings)
+        (is (= "#settings" (.-hash fake-location)))
+        (ui/set-window-hash! :entries)
+        (is (= "#entries" (.-hash fake-location)))
+        (finally
+          (js/goog.object.remove js/goog.global "window"))))))

@@ -275,3 +275,26 @@
     (is (= "/" (sut/resolve-base-path "/index.html")))
     (is (= "/" (sut/resolve-base-path "")))))
 
+(deftest tab-routing-test
+  (testing "tab->hash maps tabs to anchors"
+    (is (= "#entries" (sut/tab->hash :entries)))
+    (is (= "#new" (sut/tab->hash :new)))
+    (is (= "#dashboard" (sut/tab->hash :dashboard)))
+    (is (= "#settings" (sut/tab->hash :settings)))
+    (is (= "#entries" (sut/tab->hash nil)))
+    (is (= "#entries" (sut/tab->hash :unknown))))
+
+  (testing "hash->tab maps url anchors to tab keywords"
+    (is (= :entries (sut/hash->tab "#entries")))
+    (is (= :new (sut/hash->tab "#new")))
+    (is (= :dashboard (sut/hash->tab "#dashboard")))
+    (is (= :settings (sut/hash->tab "#settings")))
+    (is (= :entries (sut/hash->tab "entries")))
+    (is (= :new (sut/hash->tab "new")))
+    (is (= :dashboard (sut/hash->tab "dashboard")))
+    (is (= :settings (sut/hash->tab "settings")))
+    (is (= :entries (sut/hash->tab "#")))
+    (is (= :entries (sut/hash->tab "")))
+    (is (= :entries (sut/hash->tab nil)))
+    (is (= :entries (sut/hash->tab "#unknown")))))
+
