@@ -12,7 +12,7 @@ dev-test: install
 	npx shadow-cljs watch frontend test
 
 test: install
-	npx shadow-cljs compile test && node out/node-tests.js
+	npx shadow-cljs compile test
 
 release: install
 	npx shadow-cljs release frontend

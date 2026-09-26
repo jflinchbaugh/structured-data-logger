@@ -443,6 +443,58 @@
       (when (not= (.-hash (.-location js/window)) h)
         (set! (.-hash (.-location js/window)) h)))))
 
+(defnc EntryListItem
+  [{:keys [entry on-edit on-delete]}]
+  (d/div
+   {:class "entry-list-item"}
+   (d/div
+    {:class "entry-header"}
+    (d/span (core/format-local-datetime (:timestamp entry)))
+    (d/div
+     (d/a
+      {:class "btn btn-secondary btn-small"
+       :href "#new"
+       :style {:marginRight "6px"}
+       :on-click #(when on-edit (on-edit entry))}
+      "Edit")
+     (d/button
+      {:class "btn btn-danger btn-small"
+       :on-click #(when on-delete (on-delete entry))}
+      "Delete")))
+   (d/div {:class "entry-desc"} (:description entry))
+   (when (seq (:data entry))
+     (d/div
+      {:class "entry-kv-list"}
+      (for [[k v] (:data entry)]
+        (d/span {:key (str k) :class "badge"}
+                (format-kv k v)))))))
+
+(defnc EntriesListView
+  [{:keys [entries on-add on-edit on-delete]}]
+  (let [clean-entries (filterv core/valid-entry? (or entries []))]
+    (d/div
+     {:id "entries" :class "card"}
+     (d/div {:style {:display "flex"
+                     :justify-content "space-between"
+                     :align-items "center"
+                     :marginBottom "12px"}}
+            (d/h3 {:class "card-title" :style {:margin 0}}
+                  (str "Entries (" (count clean-entries) ")"))
+            (d/a {:class "btn btn-primary btn-small"
+                  :href "#new"
+                  :on-click #(when on-add (on-add))}
+                 "+ Add Entry"))
+     (if (empty? clean-entries)
+       (d/p {:style {:color "var(--muted)" :padding "16px 0"}}
+            (str "No journal entries recorded yet. "
+                 "Click '+ Add Entry' to create one."))
+       (for [entry (sort-by :timestamp #(compare %2 %1) clean-entries)]
+         ($ EntryListItem
+            {:key (:id entry)
+             :entry entry
+             :on-edit on-edit
+             :on-delete on-delete}))))))
+
 (defnc AppRoot []
   (let [[active-tab set-active-tab] (hooks/use-state current-window-tab)
         [entries set-entries]
@@ -603,7 +655,24 @@
           navigate-to!
           (fn [tab]
             (set-active-tab tab)
-            (set-window-hash! tab))]
+            (set-window-hash! tab))
+
+          delete-entry!
+          (fn [entry]
+            (when (confirm-delete? entry)
+              (let [clean-entries (filterv core/valid-entry? (or entries []))
+                    id (:id entry)
+                    del-op (when (and (string? id) (not (str/blank? id)))
+                             (core/create-delete-op id))
+                    updated-entries (if del-op
+                                      (core/apply-transaction
+                                       clean-entries del-op)
+                                      clean-entries)
+                    updated-ops (if del-op
+                                  (conj pending-ops del-op)
+                                  pending-ops)]
+                (save-local! updated-entries updated-ops)
+                (js/setTimeout do-sync! 50))))]
 
       ;; 1. Sync on mount / startup
       (hooks/use-effect
@@ -677,62 +746,13 @@
 
        (case active-tab
          :entries
-         (let [clean-entries (filterv core/valid-entry? (or entries []))]
-           (d/div
-            {:id "entries" :class "card"}
-            (d/div {:style {:display "flex"
-                            :justify-content "space-between"
-                            :align-items "center"
-                            :marginBottom "12px"}}
-                   (d/h3 {:class "card-title" :style {:margin 0}}
-                         (str "Entries (" (count clean-entries) ")"))
-                   (d/a {:class "btn btn-primary btn-small"
-                         :href "#new"
-                         :on-click #(navigate-to! :new)}
-                        "+ Add Entry"))
-            (if (empty? clean-entries)
-              (d/p {:style {:color "var(--muted)" :padding "16px 0"}}
-                   "No journal entries recorded yet. Click '+ Add Entry' to create one.")
-              (for [entry (sort-by :timestamp #(compare %2 %1) clean-entries)]
-                (d/div
-                 {:key (:id entry) :class "entry-list-item"}
-                 (d/div
-                  {:class "entry-header"}
-                  (d/span (core/format-local-datetime (:timestamp entry)))
-                  (d/div
-                   (d/a
-                    {:class "btn btn-secondary btn-small"
-                     :href "#new"
-                     :style {:marginRight "6px"}
-                     :on-click #(do (set-editing-entry entry)
-                                    (navigate-to! :new))}
-                    "Edit")
-                   (d/button
-                    {:class "btn btn-danger btn-small"
-                     :on-click
-                     (fn []
-                       (when (confirm-delete? entry)
-                         (let [id (:id entry)
-                               del-op (when (and (string? id)
-                                                 (not (str/blank? id)))
-                                        (core/create-delete-op id))
-                               updated-entries (if del-op
-                                                 (core/apply-transaction
-                                                  clean-entries del-op)
-                                                 clean-entries)
-                               updated-ops (if del-op
-                                             (conj pending-ops del-op)
-                                             pending-ops)]
-                           (save-local! updated-entries updated-ops)
-                           (js/setTimeout do-sync! 50))))}
-                    "Delete")))
-                 (d/div {:class "entry-desc"} (:description entry))
-                 (when (seq (:data entry))
-                   (d/div
-                    {:class "entry-kv-list"}
-                    (for [[k v] (:data entry)]
-                      (d/span {:key (str k) :class "badge"}
-                              (format-kv k v))))))))))
+         ($ EntriesListView
+            {:entries entries
+             :on-add #(navigate-to! :new)
+             :on-edit (fn [entry]
+                        (set-editing-entry entry)
+                        (navigate-to! :new))
+             :on-delete delete-entry!})
 
          :new
          (d/div
