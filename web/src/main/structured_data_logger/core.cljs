@@ -323,6 +323,12 @@
 
       clean-entries)))
 
+(defn sort-entries-descending
+  "Filters valid entries and sorts them in reverse chronological order."
+  [entries]
+  (let [clean (filterv valid-entry? (or entries []))]
+    (vec (sort-by :timestamp #(compare %2 %1) clean))))
+
 (defn apply-transactions
   "Applies an ordered collection of transactions to an entries vector,
    and ensures the result is sorted chronologically by timestamp."

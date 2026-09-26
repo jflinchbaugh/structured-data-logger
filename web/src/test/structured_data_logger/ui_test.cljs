@@ -1,7 +1,21 @@
 (ns structured-data-logger.ui-test
   (:require [cljs.test :refer [deftest is testing]]
+            [clojure.string :as str]
+            [helix.core :refer [$]]
+            ["jsdom" :refer [JSDOM]]
             [structured-data-logger.core :as core]
             [structured-data-logger.ui :as ui]))
+
+(defonce ^:private _init-jsdom
+  (let [dom (JSDOM. "<!DOCTYPE html><html><body></body></html>"
+                    #js {:url "http://localhost/"})]
+    (js/goog.object.set js/goog.global "window" (.-window dom))
+    (js/goog.object.set js/goog.global "document" (.. dom -window -document))
+    (js/Object.defineProperty
+     js/goog.global "navigator"
+     #js {:value (.. dom -window -navigator)
+          :configurable true
+          :writable true})))
 
 (deftest parse-val-test
   (testing "parse-val correctly handles integer, float, and string values"
@@ -92,4 +106,75 @@
         (ui/set-window-hash! :entries)
         (is (= "#entries" (.-hash fake-location)))
         (finally
-          (js/goog.object.remove js/goog.global "window"))))))
+          ;; Restore window to JSDOM window instead of deleting
+          (let [dom (js/require "jsdom")
+                jsdom (.-JSDOM dom)
+                d (jsdom. "<!DOCTYPE html><html><body></body></html>"
+                          #js {:url "http://localhost/"})]
+            (js/goog.object.set js/goog.global "window" (.-window d))))))))
+
+(deftest entry-list-item-rtl-test
+  (testing "EntryListItem renders text content and triggers on-edit / on-delete"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          fire-event (.-fireEvent rtl)
+          sample {:id "e1"
+                  :timestamp "2026-09-10T12:00:00Z"
+                  :description "Morning run"
+                  :data {:miles 3.5 :fasting nil}}
+          edited (atom nil)
+          deleted (atom nil)
+          view (render ($ ui/EntryListItem
+                          {:entry sample
+                           :on-edit #(reset! edited %)
+                           :on-delete #(reset! deleted %)}))]
+      (try
+        (is (some? (.getByText screen "Morning run")))
+        (is (some? (.getByText screen "miles: 3.5")))
+        (is (some? (.getByText screen "fasting")))
+        (.click fire-event (.getByText screen "Edit"))
+        (is (= sample @edited))
+        (.click fire-event (.getByText screen "Delete"))
+        (is (= sample @deleted))
+        (finally
+          ((goog.object.get view "unmount")))))))
+
+(deftest entries-list-view-rtl-test
+  (testing "EntriesListView renders empty state and triggers on-add"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          fire-event (.-fireEvent rtl)
+          added (atom false)
+          view (render ($ ui/EntriesListView
+                          {:entries []
+                           :on-add #(reset! added true)}))]
+      (try
+        (is (some? (.getByText screen "Entries (0)")))
+        (is (some? (.getByText
+                    screen
+                    (str "No journal entries recorded yet. "
+                         "Click '+ Add Entry' to create one."))))
+        (.click fire-event (.getByText screen "+ Add Entry"))
+        (is (true? @added))
+        (finally
+          ((goog.object.get view "unmount"))))))
+
+  (testing "EntriesListView renders list of entries"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          entries [{:id "1"
+                    :timestamp "2026-09-01T10:00:00Z"
+                    :description "Older Entry"}
+                   {:id "2"
+                    :timestamp "2026-09-15T10:00:00Z"
+                    :description "Newer Entry"}]
+          view (render ($ ui/EntriesListView {:entries entries}))]
+      (try
+        (is (some? (.getByText screen "Entries (2)")))
+        (is (some? (.getByText screen "Older Entry")))
+        (is (some? (.getByText screen "Newer Entry")))
+        (finally
+          ((goog.object.get view "unmount")))))))

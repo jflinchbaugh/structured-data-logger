@@ -191,6 +191,15 @@
     (is (= {:since-tx-id 0 :operations []}
            (sut/prepare-sync-payload {:last-tx-id nil :pending-ops []})))))
 
+(deftest sort-entries-descending-test
+  (testing (str "sort-entries-descending orders entries newest first "
+                "and removes invalid entries")
+    (let [e1 {:id "1" :timestamp "2026-09-01T10:00:00Z" :description "Older"}
+          e2 {:id "2" :timestamp "2026-09-15T10:00:00Z" :description "Newer"}
+          e-invalid {:description "No id"}
+          res (sut/sort-entries-descending [e1 nil e-invalid e2])]
+      (is (= ["2" "1"] (mapv :id res))))))
+
 (deftest server-url-cleaning-test
   (testing "clean-server-url normalizes trailing slashes and blank strings"
     (is (= "http://localhost:6000"

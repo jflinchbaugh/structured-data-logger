@@ -471,7 +471,7 @@
 
 (defnc EntriesListView
   [{:keys [entries on-add on-edit on-delete]}]
-  (let [clean-entries (filterv core/valid-entry? (or entries []))]
+  (let [clean-entries (core/sort-entries-descending entries)]
     (d/div
      {:id "entries" :class "card"}
      (d/div {:style {:display "flex"
@@ -488,7 +488,7 @@
        (d/p {:style {:color "var(--muted)" :padding "16px 0"}}
             (str "No journal entries recorded yet. "
                  "Click '+ Add Entry' to create one."))
-       (for [entry (sort-by :timestamp #(compare %2 %1) clean-entries)]
+       (for [entry clean-entries]
          ($ EntryListItem
             {:key (:id entry)
              :entry entry
