@@ -4,7 +4,7 @@
   "src/test"]
  :dependencies
  [[lilactown/helix "0.2.2"]
-  [org.babashka/sci "0.15.58"]
+  [org.babashka/sci "0.15.59"]
   [com.taoensso/telemere "1.4.0"]
   [tick/tick "1.0.1"]
   [cljs-http "0.1.49"]
