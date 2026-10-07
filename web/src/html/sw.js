@@ -4,8 +4,8 @@ const CACHE_NAME = 'structured-data-journal-v{ts}';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './style.css?ts={ts}',
-  './js/main.js?ts={ts}',
+  './style.css',
+  './js/main.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
@@ -55,7 +55,7 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(() => {
         // Fallback to cache when offline
-        return caches.match(req).then((cachedResponse) => {
+        return caches.match(req, { ignoreSearch: true }).then((cachedResponse) => {
           if (cachedResponse) {
             return cachedResponse;
           }
