@@ -69,6 +69,8 @@
   [_entry]
   (confirm-dialog "Are you sure you want to delete this entry?"))
 
+(def close-symbol "\u2715")
+
 (defnc BarChart [{:keys [data]}]
   (let [entries (seq data)
         max-val (if entries (apply max (map second entries)) 1)]
@@ -87,6 +89,99 @@
                    :style {:width (str pct "%")}}))
           (d/span {:class "bar-chart-val"} (str num-val))))))))
 
+(defnc EntryKvRow [{:keys [idx item all-entries on-change on-remove]}]
+  (let [row-vals (if (str/blank? (:key item))
+                   []
+                   (core/all-known-values all-entries (:key item)))
+        dl-id (str "row-vals-dl-" idx)]
+    (d/div
+     {:class "kv-pair"}
+     (d/input {:value (:key item)
+               :placeholder "key-name"
+               :list "known-keys-datalist"
+               :auto-capitalize "none"
+               :auto-correct "off"
+               :spell-check false
+               :on-change
+               (fn [e]
+                 (let [v (core/format-key-input (.. e -target -value))]
+                   (on-change idx :key v)))})
+     (d/input {:value (:val item)
+               :placeholder "Value"
+               :list dl-id
+               :on-change
+               (fn [e]
+                 (let [v (.. e -target -value)]
+                   (on-change idx :val v)))})
+     (d/datalist
+      {:id dl-id}
+      (for [v row-vals]
+        (d/option {:key (str "rv-" idx "-" v) :value v})))
+     (d/button {:class "btn btn-danger btn-small"
+                :on-click #(on-remove idx)}
+               close-symbol))))
+
+(defnc EntryAddField [{:keys [all-entries
+                              new-key-name
+                              set-new-key-name
+                              new-key-val
+                              set-new-key-val
+                              on-add]}]
+  (let [blended-k (core/blended-keys all-entries)]
+    (d/div
+     {:class "form-group" :style {:borderTop "1px dashed var(--border)"
+                                  :paddingTop "12px"}}
+     (d/label "Add Field")
+     (d/div
+      {:class "kv-pair"}
+      (d/input {:placeholder "Key name (e.g. pills, mileage)"
+                :value new-key-name
+                :list "known-keys-datalist"
+                :auto-capitalize "none"
+                :auto-correct "off"
+                :spell-check false
+                :on-change (fn [e]
+                             (set-new-key-name
+                              (core/format-key-input (.. e -target -value))))})
+      (d/input {:placeholder "Value (numeric, text)"
+                :value new-key-val
+                :list "new-key-values-datalist"
+                :on-change (fn [e]
+                             (set-new-key-val (.. e -target -value)))})
+      (d/button
+       {:class "btn btn-secondary"
+        :on-click on-add}
+       "+ Add"))
+
+     (when (seq blended-k)
+       (d/div
+        (d/span {:style {:fontSize "0.8rem" :color "var(--muted)"}}
+                "Suggested keys:")
+        (d/div
+         {:class "chip-row"}
+         (for [k (take 10 blended-k)]
+           (let [k-str (core/to-kebab-case (name k))]
+             (d/span {:key (str "key-" k)
+                      :class "chip"
+                      :on-click #(set-new-key-name k-str)}
+                     k-str))))))
+
+     (when (not (str/blank? new-key-name))
+       (let [kw (keyword (str/trim new-key-name))
+             common-v (core/common-values all-entries kw)]
+         (when (seq common-v)
+           (d/div
+            {:style {:marginTop "8px"}}
+            (d/span {:style {:fontSize "0.8rem" :color "var(--muted)"}}
+                    (str "Common values for '" (name kw) "':"))
+            (d/div
+             {:class "chip-row"}
+             (for [v (take 6 common-v)]
+               (d/span {:key (str "val-" v)
+                        :class "chip"
+                        :on-click #(set-new-key-val (str v))}
+                       (str v)))))))))))
+
 (defnc EntryForm [{:keys [on-save on-cancel initial-entry all-entries]}]
   (let [[timestamp set-timestamp]
         (hooks/use-state
@@ -100,11 +195,24 @@
         [new-key-name set-new-key-name] (hooks/use-state "")
         [new-key-val set-new-key-val] (hooks/use-state "")
         [error-msg set-error-msg] (hooks/use-state nil)
-        blended-k (core/blended-keys all-entries)
         all-k (core/all-known-keys all-entries)
         new-key-vals (if (str/blank? new-key-name)
                        []
-                       (core/all-known-values all-entries new-key-name))]
+                       (core/all-known-values all-entries new-key-name))
+        handle-kv-change
+        (fn [idx field val]
+          (set-kv-list (assoc-in kv-list [idx field] val)))
+        handle-kv-remove
+        (fn [idx]
+          (set-kv-list (vec (concat (subvec kv-list 0 idx)
+                                    (subvec kv-list (inc idx))))))
+        handle-add-pair
+        (fn []
+          (when (not (str/blank? new-key-name))
+            (set-kv-list (conj kv-list {:key (core/to-kebab-case new-key-name)
+                                        :val (str/trim new-key-val)}))
+            (set-new-key-name "")
+            (set-new-key-val "")))]
 
     (d/div
      {:class "card"}
@@ -127,7 +235,8 @@
       (d/input {:type "datetime-local"
                 :step "1"
                 :value timestamp
-                :on-change #(set-timestamp (.. % -target -value))}))
+                :on-change (fn [e]
+                             (set-timestamp (.. e -target -value)))}))
 
      (d/div
       {:class "form-group"}
@@ -135,7 +244,8 @@
       (d/textarea {:rows 5
                    :placeholder "e.g. Morning vitamins, jogged 3 miles"
                    :value description
-                   :on-change #(set-description (.. % -target -value))}))
+                   :on-change (fn [e]
+                                (set-description (.. e -target -value)))}))
 
      (d/div
       {:class "form-group"}
@@ -144,93 +254,21 @@
         (d/p {:style {:color "var(--muted)" :fontSize "0.85rem"}}
              "No extra fields yet.")
         (for [[idx item] (map-indexed vector kv-list)]
-          (let [row-vals (if (str/blank? (:key item))
-                           []
-                           (core/all-known-values all-entries (:key item)))
-                dl-id (str "row-vals-dl-" idx)]
-             (d/div
-              {:key (str idx) :class "kv-pair"}
-              (d/input {:value (:key item)
-                        :placeholder "key-name"
-                        :list "known-keys-datalist"
-                        :auto-capitalize "none"
-                        :auto-correct "off"
-                        :spell-check false
-                        :on-change
-                        #(let [v (core/format-key-input (.. % -target -value))]
-                           (set-kv-list (assoc-in kv-list [idx :key] v)))})
-              (d/input {:value (:val item)
-                        :placeholder "Value"
-                        :list dl-id
-                        :on-change
-                        #(let [v (.. % -target -value)]
-                           (set-kv-list (assoc-in kv-list [idx :val] v)))})
-              (d/datalist
-               {:id dl-id}
-               (for [v row-vals]
-                 (d/option {:key (str "rv-" idx "-" v) :value v})))
-              (d/button {:class "btn btn-danger btn-small"
-                         :on-click
-                         #(set-kv-list (vec (concat (subvec kv-list 0 idx)
-                                                    (subvec kv-list (inc idx)))))}
-                        "✕"))))))
+          ($ EntryKvRow
+             {:key (str idx)
+              :idx idx
+              :item item
+              :all-entries all-entries
+              :on-change handle-kv-change
+              :on-remove handle-kv-remove}))))
 
-     (d/div
-      {:class "form-group" :style {:borderTop "1px dashed var(--border)"
-                                   :paddingTop "12px"}}
-      (d/label "Add Field")
-      (d/div
-       {:class "kv-pair"}
-       (d/input {:placeholder "Key name (e.g. pills, mileage)"
-                 :value new-key-name
-                 :list "known-keys-datalist"
-                 :auto-capitalize "none"
-                 :auto-correct "off"
-                 :spell-check false
-                 :on-change #(set-new-key-name
-                              (core/format-key-input (.. % -target -value)))})
-       (d/input {:placeholder "Value (numeric, text)"
-                 :value new-key-val
-                 :list "new-key-values-datalist"
-                 :on-change #(set-new-key-val (.. % -target -value))})
-       (d/button
-        {:class "btn btn-secondary"
-         :on-click
-         #(when (not (str/blank? new-key-name))
-            (set-kv-list (conj kv-list {:key (core/to-kebab-case new-key-name)
-                                        :val (str/trim new-key-val)}))
-            (set-new-key-name "")
-            (set-new-key-val ""))}
-        "+ Add"))
-
-      (when (seq blended-k)
-        (d/div
-         (d/span {:style {:fontSize "0.8rem" :color "var(--muted)"}}
-                 "Suggested keys:")
-         (d/div
-          {:class "chip-row"}
-          (for [k (take 10 blended-k)]
-            (let [k-str (core/to-kebab-case (name k))]
-              (d/span {:key (str "key-" k)
-                       :class "chip"
-                       :on-click #(set-new-key-name k-str)}
-                      k-str))))))
-
-      (when (not (str/blank? new-key-name))
-        (let [kw (keyword (str/trim new-key-name))
-              common-v (core/common-values all-entries kw)]
-          (when (seq common-v)
-            (d/div
-             {:style {:marginTop "8px"}}
-             (d/span {:style {:fontSize "0.8rem" :color "var(--muted)"}}
-                     (str "Common values for '" (name kw) "':"))
-             (d/div
-              {:class "chip-row"}
-              (for [v (take 6 common-v)]
-                (d/span {:key (str "val-" v)
-                         :class "chip"
-                         :on-click #(set-new-key-val (str v))}
-                        (str v)))))))))
+     ($ EntryAddField
+        {:all-entries all-entries
+         :new-key-name new-key-name
+         :set-new-key-name set-new-key-name
+         :new-key-val new-key-val
+         :set-new-key-val set-new-key-val
+         :on-add handle-add-pair})
 
      (when error-msg
        (d/div {:style {:color "var(--danger)"
@@ -243,28 +281,29 @@
       (d/button
        {:class "btn btn-primary"
         :on-click
-        #(let [pending-pair (when (not (str/blank? new-key-name))
-                              {:key (core/to-kebab-case new-key-name)
-                               :val (str/trim new-key-val)})
-               effective-kv (if pending-pair
-                              (conj kv-list pending-pair)
-                              kv-list)
-               data-map (into {}
-                              (for [{:keys [key val]} effective-kv
-                                    :let [k-str (core/to-kebab-case key)]
-                                    :when (not (str/blank? k-str))]
-                                [(keyword k-str) (parse-val val)]))
-               desc (str/trim (or description ""))]
-           (if (and (str/blank? desc) (empty? data-map))
-             (set-error-msg
-              "Please provide a description or at least one field.")
-             (let [entry (core/create-entry
-                          {:id (:id initial-entry)
-                           :timestamp (core/from-local-datetime-input timestamp)
-                           :description desc
-                           :data data-map})]
-               (set-error-msg nil)
-               (on-save entry))))}
+        (fn []
+          (let [pending-pair (when (not (str/blank? new-key-name))
+                               {:key (core/to-kebab-case new-key-name)
+                                :val (str/trim new-key-val)})
+                effective-kv (if pending-pair
+                               (conj kv-list pending-pair)
+                               kv-list)
+                data-map (into {}
+                               (for [{:keys [key val]} effective-kv
+                                     :let [k-str (core/to-kebab-case key)]
+                                     :when (not (str/blank? k-str))]
+                                 [(keyword k-str) (parse-val val)]))
+                desc (str/trim (or description ""))]
+            (if (and (str/blank? desc) (empty? data-map))
+              (set-error-msg
+               "Please provide a description or at least one field.")
+              (let [entry (core/create-entry
+                           {:id (:id initial-entry)
+                            :timestamp (core/from-local-datetime-input timestamp)
+                            :description desc
+                            :data data-map})]
+                (set-error-msg nil)
+                (on-save entry)))))}
        "Save Entry")
       (when on-cancel
         (d/button {:class "btn btn-secondary"
@@ -302,12 +341,13 @@
         (d/label "Starter Scripts")
         (d/select
          {:on-change
-          #(let [v (.. % -target -value)
-                 script (get starter-scripts v)]
-             (when script
-               (set-code script)
-               (ls/set-item! :dashboard-code script)
-               (run-code script)))}
+          (fn [e]
+            (let [v (.. e -target -value)
+                  script (get starter-scripts v)]
+              (when script
+                (set-code script)
+                (ls/set-item! :dashboard-code script)
+                (run-code script))))}
          (for [k (keys starter-scripts)]
            (d/option {:key k :value k} k))))
 
@@ -319,9 +359,10 @@
           :value code
           :rows 5
           :on-change
-          #(let [v (.. % -target -value)]
-             (set-code v)
-             (ls/set-item! :dashboard-code v))}))
+          (fn [e]
+            (let [v (.. e -target -value)]
+              (set-code v)
+              (ls/set-item! :dashboard-code v)))}))
 
        (d/button
         {:class "btn btn-primary"
@@ -373,7 +414,8 @@
       (d/label "Sync ID / Device ID")
       (d/input {:value user-id
                 :placeholder "e.g. my-device"
-                :on-change #(set-user-id (.. % -target -value))}))
+                :on-change (fn [e]
+                             (set-user-id (.. e -target -value)))}))
 
      (d/div
       {:class "form-group"}
@@ -381,7 +423,8 @@
       (d/input {:type "email"
                 :value username
                 :placeholder "user@example.com"
-                :on-change #(set-username (.. % -target -value))}))
+                :on-change (fn [e]
+                             (set-username (.. e -target -value)))}))
 
      (d/div
       {:class "form-group"}
@@ -389,7 +432,8 @@
       (d/input {:type "password"
                 :value password
                 :placeholder "Password"
-                :on-change #(set-password (.. % -target -value))}))
+                :on-change (fn [e]
+                             (set-password (.. e -target -value)))}))
 
      (d/div
       {:style {:display "flex"
@@ -399,10 +443,11 @@
       (d/button
        {:class (str "btn btn-primary" (when dirty? " btn-highlight"))
         :on-click
-        #(let [new-cfg {:user-id user-id
-                        :username username
-                        :password password}]
-           (on-save-config new-cfg))}
+        (fn []
+          (let [new-cfg {:user-id user-id
+                         :username username
+                         :password password}]
+            (on-save-config new-cfg)))}
        (if dirty? "Save Settings *" "Save Settings"))
 
       (d/button
@@ -410,10 +455,11 @@
         :disabled dirty?
         :title (when dirty? "Save settings before registering")
         :on-click
-        #(let [cfg {:user-id user-id
-                    :username username
-                    :password password}]
-           (on-register cfg))}
+        (fn []
+          (let [cfg {:user-id user-id
+                     :username username
+                     :password password}]
+            (on-register cfg)))}
        "Register Account")
 
       (d/button
@@ -503,13 +549,14 @@
         (hooks/use-state (filterv core/valid-entry?
                                   (or (ls/get-item :journal-entries) [])))
         [pending-ops set-pending-ops]
-        (hooks/use-state (vec (filter #(and (map? %)
-                                            (string? (:client-tx-id %))
-                                            (not (str/blank?
-                                                  (:client-tx-id %))))
-                                      (or (ls/get-item :pending-ops)
-                                          (ls/get-item :pending-changes)
-                                          []))))
+        (hooks/use-state
+         (vec (filter (fn [op]
+                        (and (map? op)
+                             (string? (:client-tx-id op))
+                             (not (str/blank? (:client-tx-id op)))))
+                      (or (ls/get-item :pending-ops)
+                          (ls/get-item :pending-changes)
+                          []))))
         [last-tx-id set-last-tx-id]
         (hooks/use-state (or (ls/get-item :last-tx-id) 0))
         [editing-entry set-editing-entry] (hooks/use-state nil)
@@ -647,7 +694,9 @@
                                            :last-tx-id 0))))
                           (set-sync-status (str "Registered: " (:body resp)))
                           (js/setTimeout
-                           #(do-sync! "Syncing full history..." 0) 50))
+                           (fn []
+                             (do-sync! "Syncing full history..." 0))
+                           50))
                         (set-sync-status (str "Registration failed: "
                                               (:body resp)))))
                     (catch :default e
@@ -732,8 +781,9 @@
         (d/a {:class (str "tab-btn"
                           (when (= active-tab :new) " active"))
               :href "#new"
-              :on-click #(do (set-editing-entry nil)
-                             (navigate-to! :new))}
+              :on-click (fn []
+                          (set-editing-entry nil)
+                          (navigate-to! :new))}
              "+ New")
         (d/a {:class (str "tab-btn"
                           (when (= active-tab :dashboard) " active"))
@@ -798,7 +848,9 @@
                                :last-tx-id 0)))
                 (set-sync-status "Settings saved. Syncing full history...")
                 (js/setTimeout
-                 #(do-sync! "Syncing full history..." 0) 50))
+                 (fn []
+                   (do-sync! "Syncing full history..." 0))
+                 50))
               :on-register do-register!
               :on-sync do-sync!}))
 

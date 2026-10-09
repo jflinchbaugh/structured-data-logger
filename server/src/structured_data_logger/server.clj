@@ -164,7 +164,8 @@
         (if (valid-entry? entry)
           (let [eid (:id entry)
                 existing-idx (first (keep-indexed
-                                     #(when (= (:id %2) eid) %1)
+                                     (fn [idx item]
+                                       (when (= (:id item) eid) idx))
                                      clean-entries))]
             (if existing-idx
               (assoc clean-entries existing-idx entry)
@@ -184,9 +185,10 @@
              existing-client-txs (into #{} (keep :client-tx-id tx-log))
              unseen-ops (->> (or new-ops [])
                              (filter valid-op?)
-                             (remove #(and (:client-tx-id %)
-                                           (existing-client-txs
-                                            (:client-tx-id %)))))
+                             (remove (fn [op]
+                                       (and (:client-tx-id op)
+                                            (existing-client-txs
+                                             (:client-tx-id op))))))
              start-tx-id (or (:last-tx-id journal) 0)
              indexed-txs (map-indexed
                           (fn [idx op]
@@ -237,8 +239,9 @@
           _ (record-transactions! id ops)
           journal (get @storage id)
           all-txs (or (:tx-log journal) [])
-          filtered-txs (filterv #(and (> (:tx-id %) since-tx-id)
-                                      (valid-op? %))
+          filtered-txs (filterv (fn [tx]
+                                 (and (> (:tx-id tx) since-tx-id)
+                                      (valid-op? tx)))
                                 all-txs)
           now-str (str (t/instant))]
       (json-response

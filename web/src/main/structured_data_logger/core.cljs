@@ -149,7 +149,7 @@
   (when (seq coll)
     (let [n (count coll)
           mean (average coll)
-          variance (/ (reduce + (map #(Math/pow (- % mean) 2) coll)) n)]
+          variance (/ (reduce + (map (fn [x] (Math/pow (- x mean) 2)) coll)) n)]
       (Math/sqrt variance))))
 
 (defn intervals
@@ -314,7 +314,8 @@
         (if (valid-entry? entry)
           (let [eid (:id entry)
                 existing-idx (first (keep-indexed
-                                     #(when (= (:id %2) eid) %1)
+                                     (fn [idx item]
+                                       (when (= (:id item) eid) idx))
                                      clean-entries))]
             (if existing-idx
               (assoc clean-entries existing-idx entry)
@@ -342,8 +343,9 @@
    Preserves pending operations added concurrently during sync."
   [{:keys [entries pending-ops in-flight-ops received-txs]}]
   (let [acked-ids (into #{} (keep :client-tx-id in-flight-ops))
-        remaining-pending (vec (remove #(and (:client-tx-id %)
-                                             (acked-ids (:client-tx-id %)))
+        remaining-pending (vec (remove (fn [op]
+                                         (and (:client-tx-id op)
+                                              (acked-ids (:client-tx-id op))))
                                        (or pending-ops [])))
         with-remote (apply-transactions (filterv valid-entry? (or entries []))
                                         received-txs)

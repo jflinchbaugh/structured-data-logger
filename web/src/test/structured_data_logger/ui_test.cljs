@@ -178,3 +178,54 @@
         (is (some? (.getByText screen "Newer Entry")))
         (finally
           ((goog.object.get view "unmount")))))))
+
+(deftest entry-form-subcomponents-test
+  (testing "EntryKvRow and EntryAddField are exposed as decomposed components"
+    (is (fn? ui/EntryKvRow))
+    (is (fn? ui/EntryAddField)))
+
+  (testing "EntryKvRow renders inputs and triggers callbacks"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          fire-event (.-fireEvent rtl)
+          changed (atom nil)
+          removed (atom nil)
+          view (render ($ ui/EntryKvRow
+                          {:idx 0
+                           :item {:key "pills" :val "aspirin"}
+                           :all-entries []
+                           :on-change (fn [idx field val]
+                                        (reset! changed [idx field val]))
+                           :on-remove (fn [idx] (reset! removed idx))}))]
+      (try
+        (let [key-input (.getByPlaceholderText screen "key-name")
+              val-input (.getByPlaceholderText screen "Value")]
+          (is (= "pills" (.-value key-input)))
+          (is (= "aspirin" (.-value val-input)))
+          (.change fire-event val-input #js {:target #js {:value "ibuprofen"}})
+          (is (= [0 :val "ibuprofen"] @changed))
+          (.click fire-event (.getByText screen ui/close-symbol))
+          (is (= 0 @removed)))
+        (finally
+          ((goog.object.get view "unmount"))))))
+
+  (testing "EntryAddField renders and triggers on-add"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          fire-event (.-fireEvent rtl)
+          added (atom false)
+          view (render ($ ui/EntryAddField
+                          {:all-entries []
+                           :new-key-name "mileage"
+                           :set-new-key-name (fn [_])
+                           :new-key-val "25"
+                           :set-new-key-val (fn [_])
+                           :on-add #(reset! added true)}))]
+      (try
+        (is (some? (.getByText screen "+ Add")))
+        (.click fire-event (.getByText screen "+ Add"))
+        (is (true? @added))
+        (finally
+          ((goog.object.get view "unmount")))))))
