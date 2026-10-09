@@ -363,6 +363,89 @@ input:focus, select:focus, textarea:focus {
   text-align: center;
 }
 
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.card-title-inline {
+  margin: 0;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.add-field-group {
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+
+.field-suggestion-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.common-values-container {
+  margin-top: 8px;
+}
+
+.field-empty-notice {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.entries-empty-notice {
+  color: var(--muted);
+  padding: 16px 0;
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.form-error {
+  color: var(--danger);
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.sync-status-msg {
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+
+.badge-unsynced {
+  background: var(--danger);
+  color: #fff;
+}
+
+.badge-synced {
+  background: var(--success);
+  color: #fff;
+}
+
+.btn-space-right {
+  margin-right: 6px;
+}
+
 @media (max-width: 480px) {
   .app-container {
     padding: 10px;

@@ -129,8 +129,7 @@
                               on-add]}]
   (let [blended-k (core/blended-keys all-entries)]
     (d/div
-     {:class "form-group" :style {:borderTop "1px dashed var(--border)"
-                                  :paddingTop "12px"}}
+     {:class "form-group add-field-group"}
      (d/label "Add Field")
      (d/div
       {:class "kv-pair"}
@@ -155,7 +154,7 @@
 
      (when (seq blended-k)
        (d/div
-        (d/span {:style {:fontSize "0.8rem" :color "var(--muted)"}}
+        (d/span {:class "field-suggestion-label"}
                 "Suggested keys:")
         (d/div
          {:class "chip-row"}
@@ -171,8 +170,8 @@
              common-v (core/common-values all-entries kw)]
          (when (seq common-v)
            (d/div
-            {:style {:marginTop "8px"}}
-            (d/span {:style {:fontSize "0.8rem" :color "var(--muted)"}}
+            {:class "common-values-container"}
+            (d/span {:class "field-suggestion-label"}
                     (str "Common values for '" (name kw) "':"))
             (d/div
              {:class "chip-row"}
@@ -251,7 +250,7 @@
       {:class "form-group"}
       (d/label "Current Key:Value Pairs")
       (if (empty? kv-list)
-        (d/p {:style {:color "var(--muted)" :fontSize "0.85rem"}}
+        (d/p {:class "field-empty-notice"}
              "No extra fields yet.")
         (for [[idx item] (map-indexed vector kv-list)]
           ($ EntryKvRow
@@ -271,13 +270,11 @@
          :on-add handle-add-pair})
 
      (when error-msg
-       (d/div {:style {:color "var(--danger)"
-                       :marginTop "8px"
-                       :fontSize "0.85rem"}}
+       (d/div {:class "form-error"}
               error-msg))
 
      (d/div
-      {:style {:display "flex" :gap "8px" :marginTop "16px"}}
+      {:class "form-actions"}
       (d/button
        {:class "btn btn-primary"
         :on-click
@@ -376,7 +373,7 @@
          (d/div
           {:class "eval-result"}
           (if-let [err (:error eval-out)]
-            (d/span {:style {:color "var(--danger)"}} (str "Error: " err))
+            (d/span {:class "error-text"} (str "Error: " err))
             (with-out-str (pp/pprint (:result eval-out))))))))))
 
 (defnc SettingsView
@@ -395,18 +392,13 @@
     (d/div
      {:class "card"}
      (d/div
-      {:style {:display "flex"
-               :justify-content "space-between"
-               :align-items "center"
-               :marginBottom "12px"}}
-      (d/h3 {:class "card-title" :style {:margin 0}}
+      {:class "card-header-row"}
+      (d/h3 {:class "card-title card-title-inline"}
             "Backend Sync & Settings")
       (if (pos? pending-count)
-        (d/span {:class "badge"
-                 :style {:background "var(--danger)" :color "#fff"}}
+        (d/span {:class "badge badge-unsynced"}
                 (str pending-count " unsynced"))
-        (d/span {:class "badge"
-                 :style {:background "var(--success)" :color "#fff"}}
+        (d/span {:class "badge badge-synced"}
                 "Synced")))
 
      (d/div
@@ -436,10 +428,7 @@
                              (set-password (.. e -target -value)))}))
 
      (d/div
-      {:style {:display "flex"
-               :gap "8px"
-               :flexWrap "wrap"
-               :marginTop "12px"}}
+      {:class "settings-actions"}
       (d/button
        {:class (str "btn btn-primary" (when dirty? " btn-highlight"))
         :on-click
@@ -470,7 +459,7 @@
        "Sync Now"))
 
      (when sync-status
-       (d/div {:style {:marginTop "12px" :fontSize "0.9rem"}}
+       (d/div {:class "sync-status-msg"}
               sync-status))
 
      (d/div {:class "build-info"}
@@ -500,9 +489,8 @@
     (d/span (core/format-local-datetime (:timestamp entry)))
     (d/div
      (d/a
-      {:class "btn btn-secondary btn-small"
+      {:class "btn btn-secondary btn-small btn-space-right"
        :href "#new"
-       :style {:marginRight "6px"}
        :on-click #(when on-edit (on-edit entry))}
       "Edit")
      (d/button
@@ -522,18 +510,15 @@
   (let [clean-entries (core/sort-entries-descending entries)]
     (d/div
      {:id "entries" :class "card"}
-     (d/div {:style {:display "flex"
-                     :justify-content "space-between"
-                     :align-items "center"
-                     :marginBottom "12px"}}
-            (d/h3 {:class "card-title" :style {:margin 0}}
+     (d/div {:class "card-header-row"}
+            (d/h3 {:class "card-title card-title-inline"}
                   (str "Entries (" (count clean-entries) ")"))
             (d/a {:class "btn btn-primary btn-small"
                   :href "#new"
                   :on-click #(when on-add (on-add))}
                  "+ Add Entry"))
      (if (empty? clean-entries)
-       (d/p {:style {:color "var(--muted)" :padding "16px 0"}}
+       (d/p {:class "entries-empty-notice"}
             (str "No journal entries recorded yet. "
                  "Click '+ Add Entry' to create one."))
        (for [entry clean-entries]
@@ -764,9 +749,7 @@
        {:class "app-container"}
        (d/header
         {:class "app-header"}
-        (d/div {:style {:display "flex"
-                        :align-items "center"
-                        :gap "10px"}}
+        (d/div {:class "app-brand"}
                (d/img {:src "icon-192.png"
                        :alt "Structured Data Journal Icon"
                        :class "app-logo"})
