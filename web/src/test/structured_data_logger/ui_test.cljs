@@ -125,7 +125,7 @@
                   :data {:miles 3.5 :fasting nil}}
           edited (atom nil)
           deleted (atom nil)
-          view (render ($ ui/EntryListItem
+          view (render ($ ui/entry-list-item
                           {:entry sample
                            :on-edit #(reset! edited %)
                            :on-delete #(reset! deleted %)}))]
@@ -147,7 +147,7 @@
           screen (.-screen rtl)
           fire-event (.-fireEvent rtl)
           added (atom false)
-          view (render ($ ui/EntriesListView
+          view (render ($ ui/entries-list-view
                           {:entries []
                            :on-add #(reset! added true)}))]
       (try
@@ -171,7 +171,7 @@
                    {:id "2"
                     :timestamp "2026-09-15T10:00:00Z"
                     :description "Newer Entry"}]
-          view (render ($ ui/EntriesListView {:entries entries}))]
+          view (render ($ ui/entries-list-view {:entries entries}))]
       (try
         (is (some? (.getByText screen "Entries (2)")))
         (is (some? (.getByText screen "Older Entry")))
@@ -181,8 +181,8 @@
 
 (deftest entry-form-subcomponents-test
   (testing "EntryKvRow and EntryAddField are exposed as decomposed components"
-    (is (fn? ui/EntryKvRow))
-    (is (fn? ui/EntryAddField)))
+    (is (fn? ui/entry-kv-row))
+    (is (fn? ui/entry-add-field)))
 
   (testing "EntryKvRow renders inputs and triggers callbacks"
     (let [rtl (js/require "@testing-library/react")
@@ -191,7 +191,7 @@
           fire-event (.-fireEvent rtl)
           changed (atom nil)
           removed (atom nil)
-          view (render ($ ui/EntryKvRow
+          view (render ($ ui/entry-kv-row
                           {:idx 0
                            :item {:key "pills" :val "aspirin"}
                            :all-entries []
@@ -216,7 +216,7 @@
           screen (.-screen rtl)
           fire-event (.-fireEvent rtl)
           added (atom false)
-          view (render ($ ui/EntryAddField
+          view (render ($ ui/entry-add-field
                           {:all-entries []
                            :new-key-name "mileage"
                            :set-new-key-name (fn [_])

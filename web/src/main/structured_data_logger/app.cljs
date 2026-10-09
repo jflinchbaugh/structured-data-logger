@@ -4,13 +4,13 @@
             ["react-dom/client" :as rdom]
             ["react" :as react]
             [structured-data-logger.core :as core]
-            [structured-data-logger.ui :refer [AppRoot]]))
+            [structured-data-logger.ui :refer [app-root]]))
 
 (defonce root (rdom/createRoot (js/document.getElementById "root")))
 
 (defn render []
   (tel/log! :info "rendering structured-data-logger")
-  (.render root ($ react/StrictMode ($ AppRoot))))
+  (.render root ($ react/StrictMode ($ app-root))))
 
 (defn register-service-worker! []
   (when (exists? js/navigator.serviceWorker)

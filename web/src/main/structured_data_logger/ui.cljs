@@ -71,7 +71,7 @@
 
 (def close-symbol "\u2715")
 
-(defnc BarChart [{:keys [data]}]
+(defnc bar-chart [{:keys [data]}]
   (let [entries (seq data)
         max-val (if entries (apply max (map second entries)) 1)]
     (d/div
@@ -89,7 +89,7 @@
                    :style {:width (str pct "%")}}))
           (d/span {:class "bar-chart-val"} (str num-val))))))))
 
-(defnc EntryKvRow [{:keys [idx item all-entries on-change on-remove]}]
+(defnc entry-kv-row [{:keys [idx item all-entries on-change on-remove]}]
   (let [row-vals (if (str/blank? (:key item))
                    []
                    (core/all-known-values all-entries (:key item)))
@@ -121,7 +121,7 @@
                 :on-click #(on-remove idx)}
                close-symbol))))
 
-(defnc EntryAddField [{:keys [all-entries
+(defnc entry-add-field [{:keys [all-entries
                               new-key-name
                               set-new-key-name
                               new-key-val
@@ -181,7 +181,7 @@
                         :on-click #(set-new-key-val (str v))}
                        (str v)))))))))))
 
-(defnc EntryForm [{:keys [on-save on-cancel initial-entry all-entries]}]
+(defnc entry-form [{:keys [on-save on-cancel initial-entry all-entries]}]
   (let [[timestamp set-timestamp]
         (hooks/use-state
          (core/to-local-datetime-input (:timestamp initial-entry)))
@@ -253,7 +253,7 @@
         (d/p {:class "field-empty-notice"}
              "No extra fields yet.")
         (for [[idx item] (map-indexed vector kv-list)]
-          ($ EntryKvRow
+          ($ entry-kv-row
              {:key (str idx)
               :idx idx
               :item item
@@ -261,7 +261,7 @@
               :on-change handle-kv-change
               :on-remove handle-kv-remove}))))
 
-     ($ EntryAddField
+     ($ entry-add-field
         {:all-entries all-entries
          :new-key-name new-key-name
          :set-new-key-name set-new-key-name
@@ -307,7 +307,7 @@
                    :on-click on-cancel}
                   "Cancel"))))))
 
-(defnc DashboardView [{:keys [entries]}]
+(defnc dashboard-view [{:keys [entries]}]
   (let [saved-code (or (ls/get-item :dashboard-code)
                        (get starter-scripts "Counts by Key"))
         [code set-code] (hooks/use-state saved-code)
@@ -367,7 +367,7 @@
         "Run Code")
 
        (when chart-data
-         ($ BarChart {:data chart-data}))
+         ($ bar-chart {:data chart-data}))
 
        (when eval-out
          (d/div
@@ -376,7 +376,7 @@
             (d/span {:class "error-text"} (str "Error: " err))
             (with-out-str (pp/pprint (:result eval-out))))))))))
 
-(defnc SettingsView
+(defnc settings-view
   [{:keys [config pending-ops on-save-config on-register on-sync sync-status]}]
   (let [[user-id set-user-id]
         (hooks/use-state (or (:user-id config) ""))
@@ -480,7 +480,7 @@
       (when (not= (.-hash (.-location js/window)) h)
         (set! (.-hash (.-location js/window)) h)))))
 
-(defnc EntryListItem
+(defnc entry-list-item
   [{:keys [entry on-edit on-delete]}]
   (d/div
    {:class "entry-list-item"}
@@ -505,7 +505,7 @@
         (d/span {:key (str k) :class "badge"}
                 (format-kv k v)))))))
 
-(defnc EntriesListView
+(defnc entries-list-view
   [{:keys [entries on-add on-edit on-delete]}]
   (let [clean-entries (core/sort-entries-descending entries)]
     (d/div
@@ -522,13 +522,13 @@
             (str "No journal entries recorded yet. "
                  "Click '+ Add Entry' to create one."))
        (for [entry clean-entries]
-         ($ EntryListItem
+         ($ entry-list-item
             {:key (:id entry)
              :entry entry
              :on-edit on-edit
              :on-delete on-delete}))))))
 
-(defnc AppRoot []
+(defnc app-root []
   (let [[active-tab set-active-tab] (hooks/use-state current-window-tab)
         [entries set-entries]
         (hooks/use-state (filterv core/valid-entry?
@@ -781,7 +781,7 @@
 
        (case active-tab
          :entries
-         ($ EntriesListView
+         ($ entries-list-view
             {:entries entries
              :on-add #(navigate-to! :new)
              :on-edit (fn [entry]
@@ -792,7 +792,7 @@
          :new
          (d/div
           {:id "new"}
-          ($ EntryForm
+          ($ entry-form
              {:initial-entry editing-entry
               :all-entries entries
               :on-cancel #(navigate-to! :entries)
@@ -809,12 +809,12 @@
          :dashboard
          (d/div
           {:id "dashboard"}
-          ($ DashboardView {:entries entries}))
+          ($ dashboard-view {:entries entries}))
 
          :settings
          (d/div
           {:id "settings"}
-          ($ SettingsView
+          ($ settings-view
              {:config config
               :pending-ops pending-ops
               :sync-status sync-status
