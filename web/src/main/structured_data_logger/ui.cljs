@@ -38,7 +38,9 @@
   {:chart-type :bar
    :data freqs})"})
 
-(defn parse-val [v]
+(defn parse-val
+  "recognize and parse a string as an integer or as a float"
+  [v]
   (let [trimmed (str/trim (str v))]
     (cond
       (re-matches #"^-?\d+$" trimmed) (js/parseInt trimmed 10)
