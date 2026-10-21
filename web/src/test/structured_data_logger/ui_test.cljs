@@ -228,4 +228,74 @@
         (.click fire-event (.getByText screen "+ Add"))
         (is (true? @added))
         (finally
+          ((goog.object.get view "unmount"))))))
+
+  (testing "EntryAddField provides GPS button that populates coordinates"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          fire-event (.-fireEvent rtl)
+          new-k (atom "")
+          new-v (atom "")
+          mock-nav #js {:geolocation
+                        #js {:getCurrentPosition
+                             (fn [cb _]
+                               (cb #js {:coords #js {:latitude 37.7749 :longitude -122.4194}}))}}
+          view (render ($ ui/entry-add-field
+                          {:all-entries []
+                           :new-key-name @new-k
+                           :set-new-key-name #(reset! new-k %)
+                           :new-key-val @new-v
+                           :set-new-key-val #(reset! new-v %)
+                           :navigator-obj mock-nav
+                           :on-add (fn [])}))]
+      (try
+        (let [gps-btn (.getByTitle screen "Use current GPS location")]
+          (is (some? gps-btn))
+          (.click fire-event gps-btn)
+          (is (= "location" @new-k))
+          (is (= "37.774900, -122.419400" @new-v)))
+        (finally
+          ((goog.object.get view "unmount"))))))
+
+  (testing "get-browser-geolocation falls back to low-accuracy wifi/network when high accuracy fails"
+    (let [calls (atom [])
+          mock-nav #js {:geolocation
+                        #js {:getCurrentPosition
+                             (fn [cb err-cb opts]
+                               (let [high? (.-enableHighAccuracy opts)]
+                                 (swap! calls conj high?)
+                                 (if high?
+                                   (err-cb #js {:code 2 :message "Position unavailable"})
+                                   (cb #js {:coords #js {:latitude 37.7749 :longitude -122.4194}}))))}}
+          result (atom nil)]
+      (ui/get-browser-geolocation mock-nav #(reset! result %) (fn [_]))
+      (is (= [true false] @calls))
+      (is (= "37.774900, -122.419400" @result)))))
+
+
+(deftest format-kv-component-test
+  (testing "format-kv-component renders a link for location keys"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          view (render ($ ui/format-kv-component
+                          {:k :location :v "37.774900, -122.419400"}))]
+      (try
+        (let [link (.getByRole screen "link")]
+          (is (some? link))
+          (is (= "https://www.google.com/maps/search/?api=1&query=37.774900,-122.419400"
+                 (.-href link))))
+        (finally
+          ((goog.object.get view "unmount"))))))
+
+  (testing "format-kv-component renders regular text for non-location keys"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          view (render ($ ui/format-kv-component
+                          {:k :food :v "oatmeal"}))]
+      (try
+        (is (some? (.getByText screen "food: oatmeal")))
+        (finally
           ((goog.object.get view "unmount")))))))

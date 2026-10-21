@@ -70,6 +70,117 @@
   (confirm-dialog "Are you sure you want to delete this entry?"))
 
 (def close-symbol "\u2715")
+(def gps-symbol "\u2316")
+
+(defn get-browser-geolocation
+  "Retrieves current GPS coordinates as formatted 'lat, lon' string using
+   navigator.geolocation. Falls back to low-accuracy network/wi-fi positioning
+   if high-accuracy GPS fails or times out."
+  ([on-success on-error]
+   (get-browser-geolocation (when (exists? js/navigator) js/navigator)
+                            on-success
+                            on-error))
+  ([nav on-success on-error]
+   (let [nav-obj (or nav (when (exists? js/navigator) js/navigator))
+         geo (when nav-obj (.-geolocation nav-obj))
+         is-secure? (when (exists? js/window) (.-isSecureContext js/window))
+         proto (when (exists? js/location) (.-protocol js/location))
+         host (when (exists? js/location) (.-host js/location))]
+     (js/console.log "[GPS] Initiating geolocation lookup..."
+                     #js {:hasNavigator (boolean nav-obj)
+                          :hasGeolocation (boolean geo)
+                          :isSecureContext is-secure?
+                          :protocol proto
+                          :host host})
+     (if geo
+       (let [handle-success
+             (fn [pos accuracy-label]
+               (let [coords (.-coords pos)
+                     lat (.-latitude coords)
+                     lon (.-longitude coords)
+                     acc (.-accuracy coords)]
+                 (js/console.log (str "[GPS] Success via " accuracy-label ":")
+                                 #js {:lat lat :lon lon :accuracyMeters acc})
+                 (if-let [formatted (core/format-coordinates lat lon)]
+                   (when on-success (on-success formatted))
+                   (do
+                     (js/console.warn "[GPS] Invalid coordinate values:" lat lon)
+                     (when on-error (on-error "Invalid coordinates received."))))))
+             try-low-accuracy
+             (fn [original-err]
+               (js/console.warn "[GPS] High accuracy failed, falling back to low accuracy (Wi-Fi/network):"
+                                #js {:code (.-code original-err)
+                                     :message (.-message original-err)})
+               (let [low-opts #js {:enableHighAccuracy false
+                                   :timeout 15000
+                                   :maximumAge 120000}]
+                 (.getCurrentPosition
+                  geo
+                  (fn [pos] (handle-success pos "low-accuracy (Wi-Fi/network)"))
+                  (fn [err]
+                    (let [code (.-code err)
+                          raw-msg (.-message err)
+                          _ (js/console.error "[GPS] Low-accuracy lookup also failed:"
+                                              #js {:code code :message raw-msg})
+                          msg (cond
+                                (= code 1) "Location permission denied."
+                                (= code 2) (str "Location unavailable: "
+                                                (if (str/blank? raw-msg)
+                                                  "Wi-Fi/network lookup failed."
+                                                  raw-msg))
+                                (= code 3) "Location request timed out."
+                                :else (or raw-msg
+                                          (.-message original-err)
+                                          "Could not retrieve location."))]
+                      (when on-error (on-error msg))))
+                  low-opts)))
+             high-opts #js {:enableHighAccuracy true
+                            :timeout 8000
+                            :maximumAge 60000}]
+         (.getCurrentPosition
+          geo
+          (fn [pos] (handle-success pos "high-accuracy (GPS)"))
+          (fn [err]
+            (let [code (.-code err)
+                  raw-msg (.-message err)]
+              (js/console.warn "[GPS] High-accuracy attempt error:"
+                               #js {:code code :message raw-msg})
+              (if (= code 1)
+                (do
+                  (js/console.error "[GPS] Permission denied by user or browser.")
+                  (when on-error (on-error "Location permission denied.")))
+                (try-low-accuracy err))))
+          high-opts))
+       (let [diag (str "Geolocation is not supported by your browser."
+                       (when (false? is-secure?)
+                         (str " (Note: Insecure HTTP detected on "
+                              proto "//" host
+                              ". Modern browsers disable geolocation unless on HTTPS or localhost)")))]
+         (js/console.error "[GPS] Geolocation unavailable:"
+                           #js {:navigator (boolean nav-obj)
+                                :geolocation (boolean geo)
+                                :isSecureContext is-secure?
+                                :origin (str proto "//" host)})
+         (when on-error (on-error diag)))))))
+
+
+(defnc format-kv-component [{:keys [k v]}]
+  (let [k-str (name k)
+        coords (when (core/is-location-key? k)
+                 (core/parse-coordinates v))]
+    (if coords
+      (let [[lat lon] coords
+            map-url (core/make-map-link lat lon)
+            display-text (format-kv k (core/format-coordinates lat lon))]
+        (d/a {:href map-url
+              :target "_blank"
+              :rel "noopener noreferrer"
+              :class "location-link"
+              :title "Open location in Maps"}
+             (d/span {:class "location-icon"} gps-symbol)
+             " "
+             display-text))
+      (d/span (format-kv k v)))))
 
 (defnc bar-chart [{:keys [data]}]
   (let [entries (seq data)
@@ -89,11 +200,27 @@
                    :style {:width (str pct "%")}}))
           (d/span {:class "bar-chart-val"} (str num-val))))))))
 
-(defnc entry-kv-row [{:keys [idx item all-entries on-change on-remove]}]
+(defnc entry-kv-row [{:keys [idx item all-entries navigator-obj on-change on-remove]}]
   (let [row-vals (if (str/blank? (:key item))
                    []
                    (core/all-known-values all-entries (:key item)))
-        dl-id (str "row-vals-dl-" idx)]
+        dl-id (str "row-vals-dl-" idx)
+        [locating? set-locating?] (hooks/use-state false)
+        handle-get-gps
+        (fn []
+          (set-locating? true)
+          (get-browser-geolocation
+           navigator-obj
+           (fn [coords-str]
+             (set-locating? false)
+             (when (str/blank? (:key item))
+               (on-change idx :key "location"))
+             (on-change idx :val coords-str))
+           (fn [err-msg]
+             (set-locating? false)
+             (if (exists? js/alert)
+               (js/alert (str "GPS error: " err-msg))
+               (js/console.warn "GPS error:" err-msg)))))]
     (d/div
      {:class "kv-pair"}
      (d/input {:value (:key item)
@@ -117,7 +244,14 @@
       {:id dl-id}
       (for [v row-vals]
         (d/option {:key (str "rv-" idx "-" v) :value v})))
-     (d/button {:class "btn btn-danger btn-small"
+     (d/button {:type "button"
+                :class "btn btn-secondary btn-small btn-gps"
+                :title "Use current GPS location"
+                :disabled locating?
+                :on-click handle-get-gps}
+               (if locating? "..." gps-symbol))
+     (d/button {:type "button"
+                :class "btn btn-danger btn-small"
                 :on-click #(on-remove idx)}
                close-symbol))))
 
@@ -126,8 +260,25 @@
                               set-new-key-name
                               new-key-val
                               set-new-key-val
+                              navigator-obj
                               on-add]}]
-  (let [blended-k (core/blended-keys all-entries)]
+  (let [blended-k (core/blended-keys all-entries)
+        [locating? set-locating?] (hooks/use-state false)
+        handle-get-gps
+        (fn []
+          (set-locating? true)
+          (get-browser-geolocation
+           navigator-obj
+           (fn [coords-str]
+             (set-locating? false)
+             (when (str/blank? new-key-name)
+               (set-new-key-name "location"))
+             (set-new-key-val coords-str))
+           (fn [err-msg]
+             (set-locating? false)
+             (if (exists? js/alert)
+               (js/alert (str "GPS error: " err-msg))
+               (js/console.warn "GPS error:" err-msg)))))]
     (d/div
      {:class "form-group add-field-group"}
      (d/label "Add Field")
@@ -147,6 +298,13 @@
                 :list "new-key-values-datalist"
                 :on-change (fn [e]
                              (set-new-key-val (.. e -target -value)))})
+      (d/button
+       {:type "button"
+        :class "btn btn-secondary btn-small btn-gps"
+        :title "Use current GPS location"
+        :disabled locating?
+        :on-click handle-get-gps}
+       (if locating? "..." gps-symbol))
       (d/button
        {:class "btn btn-secondary"
         :on-click on-add}
@@ -180,6 +338,7 @@
                         :class "chip"
                         :on-click #(set-new-key-val (str v))}
                        (str v)))))))))))
+
 
 (defnc entry-form [{:keys [on-save on-cancel initial-entry all-entries]}]
   (let [[timestamp set-timestamp]
@@ -503,7 +662,8 @@
       {:class "entry-kv-list"}
       (for [[k v] (:data entry)]
         (d/span {:key (str k) :class "badge"}
-                (format-kv k v)))))))
+                ($ format-kv-component {:k k :v v})))))))
+
 
 (defnc entries-list-view
   [{:keys [entries on-add on-edit on-delete]}]

@@ -103,6 +103,15 @@
       (is (nil? (:error res))))
     (let [res (sut/eval-sci "(to-kebab-case \"Blood Pressure\")" {})]
       (is (= "blood-pressure" (:result res)))
+      (is (nil? (:error res))))
+    (let [res (sut/eval-sci "(format-coordinates 37.7749 -122.4194)" {})]
+      (is (= "37.774900, -122.419400" (:result res)))
+      (is (nil? (:error res))))
+    (let [res (sut/eval-sci "(parse-coordinates \"37.7749, -122.4194\")" {})]
+      (is (= [37.7749 -122.4194] (:result res)))
+      (is (nil? (:error res))))
+    (let [res (sut/eval-sci "(int (haversine-distance 37.7749 -122.4194 34.0522 -118.2437))" {})]
+      (is (= 559 (:result res)))
       (is (nil? (:error res))))))
 
 (deftest datetime-conversion-test
@@ -332,3 +341,39 @@
     (is (= :entries (sut/hash->tab nil)))
     (is (= :entries (sut/hash->tab "#unknown")))))
 
+(deftest format-coordinates-test
+  (testing "format-coordinates formats lat and lon to fixed 6 decimals"
+    (is (= "37.774900, -122.419400"
+           (sut/format-coordinates 37.7749 -122.4194)))
+    (is (= "40.712800, -74.006000"
+           (sut/format-coordinates "40.7128" "-74.006")))
+    (is (nil? (sut/format-coordinates nil nil)))
+    (is (nil? (sut/format-coordinates "" "")))
+    (is (nil? (sut/format-coordinates "not-a-number" 10)))))
+
+(deftest parse-coordinates-test
+  (testing "parse-coordinates parses coordinate strings or vectors"
+    (is (= [37.7749 -122.4194]
+           (sut/parse-coordinates "37.7749, -122.4194")))
+    (is (= [37.7749 -122.4194]
+           (sut/parse-coordinates [37.7749 -122.4194])))
+    (is (nil? (sut/parse-coordinates "not a coordinate")))
+    (is (nil? (sut/parse-coordinates "")))
+    (is (nil? (sut/parse-coordinates nil)))))
+
+(deftest location-key-and-link-test
+  (testing "is-location-key? identifies location-related keys"
+    (is (true? (sut/is-location-key? :location)))
+    (is (true? (sut/is-location-key? "location")))
+    (is (true? (sut/is-location-key? :gps)))
+    (is (true? (sut/is-location-key? "gps")))
+    (is (true? (sut/is-location-key? :coordinates)))
+    (is (true? (sut/is-location-key? "coordinates")))
+    (is (true? (sut/is-location-key? :geo)))
+    (is (false? (sut/is-location-key? :pills)))
+    (is (false? (sut/is-location-key? "mileage"))))
+
+  (testing "make-map-link produces google maps url"
+    (is (= "https://www.google.com/maps/search/?api=1&query=37.774900,-122.419400"
+           (sut/make-map-link 37.7749 -122.4194)))
+    (is (nil? (sut/make-map-link nil nil)))))

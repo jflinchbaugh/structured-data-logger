@@ -237,6 +237,80 @@
    '- time-minus
    '+ time-plus})
 
+(defn deg->rad
+  "Converts degrees to radians."
+  [deg]
+  (* deg (/ (.-PI js/Math) 180)))
+
+(defn haversine-distance
+  "Calculates distance between two coordinate pairs in kilometers."
+  [lat1 lon1 lat2 lon2]
+  (let [r 6371.0
+        dlat (deg->rad (- lat2 lat1))
+        dlon (deg->rad (- lon2 lon1))
+        lat1-rad (deg->rad lat1)
+        lat2-rad (deg->rad lat2)
+        sin-dlat-2 (js/Math.sin (/ dlat 2))
+        sin-dlon-2 (js/Math.sin (/ dlon 2))
+        a (+ (* sin-dlat-2 sin-dlat-2)
+             (* (js/Math.cos lat1-rad)
+                (js/Math.cos lat2-rad)
+                sin-dlon-2
+                sin-dlon-2))
+        c (* 2 (js/Math.atan2 (js/Math.sqrt a) (js/Math.sqrt (- 1 a))))]
+    (* r c)))
+
+(defn format-coordinates
+  "Formats latitude and longitude to fixed 6 decimal places (e.g. '37.774900, -122.419400')."
+  [lat lon]
+  (try
+    (let [n-lat (if (number? lat) lat (js/parseFloat (str/trim (str lat))))
+          n-lon (if (number? lon) lon (js/parseFloat (str/trim (str lon))))]
+      (when (and (number? n-lat) (not (js/isNaN n-lat))
+                 (number? n-lon) (not (js/isNaN n-lon)))
+        (str (.toFixed n-lat 6) ", " (.toFixed n-lon 6))))
+    (catch :default _ nil)))
+
+(defn parse-coordinates
+  "Parses a coordinate string 'lat, lon' or vector [lat lon] into [lat lon]."
+  [v]
+  (try
+    (cond
+      (and (vector? v) (= 2 (count v)))
+      (let [[lat lon] v
+            n-lat (if (number? lat) lat (js/parseFloat (str/trim (str lat))))
+            n-lon (if (number? lon) lon (js/parseFloat (str/trim (str lon))))]
+        (when (and (number? n-lat) (not (js/isNaN n-lat))
+                   (number? n-lon) (not (js/isNaN n-lon)))
+          [n-lat n-lon]))
+
+      (string? v)
+      (let [parts (str/split (str/trim v) #",\s*")]
+        (when (= 2 (count parts))
+          (let [n-lat (js/parseFloat (first parts))
+                n-lon (js/parseFloat (second parts))]
+            (when (and (not (js/isNaN n-lat)) (not (js/isNaN n-lon)))
+              [n-lat n-lon]))))
+
+      :else nil)
+    (catch :default _ nil)))
+
+(defn is-location-key?
+  "Checks if a key (keyword or string) represents a geographic location."
+  [k]
+  (when k
+    (let [k-str (to-kebab-case (name k))]
+      (contains? #{"location" "gps" "coordinates" "coordinate" "geo" "lat-lon" "lat-long"}
+                 k-str))))
+
+(defn make-map-link
+  "Returns a map search URL for the given latitude and longitude."
+  [lat lon]
+  (when-let [coords (format-coordinates lat lon)]
+    (let [[formatted-lat formatted-lon] (str/split coords #",\s*")]
+      (str "https://www.google.com/maps/search/?api=1&query="
+           formatted-lat "," formatted-lon))))
+
 (defn make-sci-ctx
   "Builds a SCI context populated with data analysis helper functions."
   [context-map]
@@ -257,7 +331,10 @@
                         'common-values common-values
                         'all-known-keys all-known-keys
                         'all-known-values all-known-values
-                        'to-kebab-case to-kebab-case}
+                        'to-kebab-case to-kebab-case
+                        'parse-coordinates parse-coordinates
+                        'format-coordinates format-coordinates
+                        'haversine-distance haversine-distance}
                        sym-bindings)})))
 
 (defn eval-sci
@@ -437,4 +514,3 @@
       "dashboard" :dashboard
       "settings" :settings
       :entries)))
-
