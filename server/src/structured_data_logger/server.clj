@@ -361,7 +361,7 @@
 (defn datahike-config
   [path]
   {:store {:backend :file
-           :path (or path "/var/lib/datahike")
+           :path (or path "/var/lib/datahike/journal")
            :id datahike-store-id}
    :schema-flexibility :read
    :value-caps :default
