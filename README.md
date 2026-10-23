@@ -2,7 +2,7 @@
 
 A mobile-friendly application for collecting and reporting on structured,
 tagged data as journal entries with persistent SCI code dashboards and
-Datahike / XTDB-backed server synchronization.
+Datahike-backed server synchronization.
 
 ## Architecture Overview
 
@@ -13,7 +13,7 @@ The repository is structured into two main components:
   Supports offline-first operation with LocalStorage and build-time
   cache busting.
 - **[`server/`](server/README.md)**: Backend REST API server built with
-  Clojure, HTTP-Kit, Reitit, Buddy Auth, Datahike, and XTDB v2. Includes Podman
+  Clojure, HTTP-Kit, Reitit, Buddy Auth, and Datahike. Includes Podman
   Kubernetes Quadlet files for rootless container deployment.
 
 ## Core Capabilities
@@ -76,7 +76,7 @@ make run-container
 #   podman run --rm -it -p 6000:6000 -e port=6000 \
 #     localhost/structured-data-logger-server:latest
 
-# Or run the combined server + XTDB pod:
+# Or run the server pod with Datahike persistence:
 make run-server
 # (Stop with: make stop-server)
 ```

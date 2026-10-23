@@ -2,7 +2,7 @@
 
 Backend synchronization and persistence server for the Structured Data
 Journal application, built with Clojure, HTTP-Kit, Reitit, Buddy Auth,
-Datahike, and XTDB v2.
+and Datahike.
 
 ## Features
 
@@ -10,7 +10,7 @@ Datahike, and XTDB v2.
   merging changes, and document storage.
 - **Authentication**: HTTP Basic Auth with hashed user credentials.
 - **Database**: In-memory storage with optional continuous sync to Datahike
-  (durable Datalog file storage) or XTDB v2.
+  (durable Datalog file storage).
 - **Containerization**: Containerfile and Podman Kubernetes Quadlet
   definitions for container deployments.
 
@@ -27,15 +27,7 @@ clj -M:run-m 6000
 Run connected to Datahike (file-based persistence):
 
 ```bash
-clj -M:run-m 6000 datahike /path/to/datahike-storage
-```
-
-Run connected to an XTDB instance:
-
-```bash
-clj -M:run-m 6000 xtdb localhost
-# or simply
-clj -M:run-m 6000 localhost
+clj -M:run-m 6000 /path/to/datahike-storage
 ```
 
 ### Running Tests
@@ -134,19 +126,11 @@ podman run --rm -it -p 6000:6000 -e port=6000 \
 
 Press `Ctrl+C` at any time to cleanly stop and remove the container.
 
-To run interactively connected to an external XTDB host:
-
-```bash
-podman run --rm -it -p 6000:6000 -e port=6000 \
-  -e dbhost=host.containers.internal \
-  localhost/structured-data-logger-server:latest
-```
-
 To run interactively with Datahike mounted storage:
 
 ```bash
 podman run --rm -it -p 6000:6000 -e port=6000 \
-  -e backend=datahike -e target=/var/lib/datahike \
+  -e target=/var/lib/datahike \
   -v structured-data-logger-datahike-data:/var/lib/datahike \
   localhost/structured-data-logger-server:latest
 ```
@@ -175,36 +159,9 @@ podman stop structured-data-logger-server
 podman rm structured-data-logger-server
 ```
 
-### 4. Run Server with Datahike Pod via Kubernetes YAML
+### 4. Run Server Pod via Kubernetes YAML
 
-Run the server with Datahike and an ephemeral volume in a foreground pod:
-
-```bash
-make run-datahike
-# or
-podman kube play --wait structured-data-logger-datahike.yaml
-```
-
-Run the server with Datahike and a durable volume in a background pod:
-
-```bash
-make start-datahike
-# or
-podman kube play structured-data-logger-datahike.yaml
-```
-
-Stop the Datahike server pod:
-
-```bash
-make stop-datahike
-# or
-podman kube down structured-data-logger-datahike.yaml
-```
-
-### 5. Run Server + XTDB Pod via Kubernetes YAML
-
-Run both the server and XTDB 2.2 together in a foreground pod
-with ephemeral storage:
+Run the server with Datahike storage in a foreground pod:
 
 ```bash
 make run-server
@@ -212,8 +169,7 @@ make run-server
 podman kube play --wait structured-data-logger-server.yaml
 ```
 
-Run both the server and XTDB 2.2 together in a background pod
-with durable storage:
+Run the server with Datahike storage in a background pod:
 
 ```bash
 make start-server
@@ -229,114 +185,33 @@ make stop-server
 podman kube down structured-data-logger-server.yaml
 ```
 
-### 6. Run Standalone XTDB Pod
+### 5. Backup and Restore (Dump & Load)
 
-In a foreground pod with ephemeral storage:
-
-```bash
-make run-xtdb
-# or
-podman kube play --wait structured-data-logger-xtdb.yaml
-```
-
-In a background pod with durable storage:
-
-```bash
-make start-xtdb
-# or
-podman kube play structured-data-logger-xtdb.yaml
-```
-
-Stop the XTDB pod:
-
-```bash
-make stop-xtdb
-# or
-podman kube down structured-data-logger-xtdb.yaml
-```
-
-### 7. Backup, Restore, and Database Migration (Dump & Load)
-
-The server jar includes built-in `dump` and `load` commands, and the container image provides `/usr/local/bin/dump-db` and `/usr/local/bin/load-db` for streaming backup/restore across any supported database backend.
+The server jar includes built-in `dump` and `load` commands, and the container image provides `/usr/local/bin/dump-db` and `/usr/local/bin/load-db` for streaming backup/restore to/from EDN format.
 
 #### Dump Database to EDN
 
-Dump from Datahike:
-
 ```bash
 # Locally:
-java -jar target/structured-data-logger-server-standalone.jar dump datahike /var/lib/datahike > backup.edn
+java -jar target/structured-data-logger-server-standalone.jar dump /var/lib/datahike > backup.edn
 
 # Via Podman container:
 podman run --rm -v structured-data-logger-datahike-data:/var/lib/datahike \
-  localhost/structured-data-logger-server:latest dump-db datahike /var/lib/datahike > backup.edn
-```
-
-Dump from XTDB:
-
-```bash
-# Locally (when XTDB is running on localhost):
-java -jar target/structured-data-logger-server-standalone.jar dump xtdb localhost > backup.edn
-
-# Via Podman container (networked to XTDB):
-podman run --rm --network host \
-  localhost/structured-data-logger-server:latest dump-db xtdb localhost > backup.edn
+  localhost/structured-data-logger-server:latest dump-db /var/lib/datahike > backup.edn
 ```
 
 #### Load / Restore Database from EDN
 
-Load into Datahike:
-
 ```bash
 # Locally:
-java -jar target/structured-data-logger-server-standalone.jar load datahike /var/lib/datahike < backup.edn
+java -jar target/structured-data-logger-server-standalone.jar load /var/lib/datahike < backup.edn
 
 # Via Podman container:
 podman run --rm -i -v structured-data-logger-datahike-data:/var/lib/datahike \
-  localhost/structured-data-logger-server:latest load-db datahike /var/lib/datahike < backup.edn
+  localhost/structured-data-logger-server:latest load-db /var/lib/datahike < backup.edn
 ```
 
-Load into XTDB:
-
-```bash
-# Locally:
-java -jar target/structured-data-logger-server-standalone.jar load xtdb localhost < backup.edn
-
-# Via Podman container:
-podman run --rm -i --network host \
-  localhost/structured-data-logger-server:latest load-db xtdb localhost < backup.edn
-```
-
-#### Automated Migration Using Kube Play Pod (`make migrate-to-datahike`)
-
-If you want to start the XTDB server pod automatically via `podman kube play`, dump all journals, load them into the Datahike volume, and shut down XTDB cleanly:
-
-```bash
-make migrate-to-datahike
-# or
-./bin/migrate-xtdb-to-datahike
-```
-
-This script:
-1. Starts `structured-data-logger-server.yaml` via `podman kube play`.
-2. Waits until XTDB is responding.
-3. Dumps journals to `backup-migration.edn`.
-4. Loads them into the `structured-data-logger-datahike-data` Podman volume.
-5. Shuts down the XTDB pod via `podman kube down`.
-
-#### Direct Migration from XTDB to Datahike (Pipe)
-
-You can migrate data directly between running backends by piping `dump-db` into `load-db`:
-
-```bash
-# Dump from XTDB and load straight into Datahike:
-podman run --rm --network host \
-  localhost/structured-data-logger-server:latest dump-db xtdb localhost | \
-podman run --rm -i -v structured-data-logger-datahike-data:/var/lib/datahike \
-  localhost/structured-data-logger-server:latest load-db datahike /var/lib/datahike
-```
-
-### 8. Install as a Systemd User Quadlet
+### 6. Install as a Systemd User Quadlet
 
 For automated background startup on boot:
 

@@ -9,7 +9,6 @@
             [buddy.auth.backends :as backends]
             [buddy.hashers :as hashers]
             [datahike.api :as d]
-            [xtdb.api :as xt]
             [taoensso.telemere :as tel]
             [clojure.edn :as edn]
             [clojure.data.json :as json]
@@ -371,52 +370,12 @@
 (defn disconnect-db!
   "Disconnect storage atom from database watches and releases connections."
   []
-  (remove-watch storage :to-xtdb)
   (remove-watch storage :to-datahike)
   (when-let [conn @db-conn]
     (try
       (d/release conn)
       (catch Exception _ nil))
     (reset! db-conn nil)))
-
-(defn connect-xtdb!
-  "Connect storage atom to XTDB."
-  [db-host]
-  (disconnect-db!)
-  (let [node (xt/client {:host db-host})]
-    (->>
-     (xt/q node
-           '(from :journals
-                  [_id entries tx-log last-tx-id document login password]))
-     (reduce
-      (fn [store doc]
-        (let [jid (or (:xt/id doc) (:_id doc))]
-          (if jid
-            (assoc store jid
-                   (assoc (dissoc doc :xt/id :_id)
-                          :entries (filterv valid-entry?
-                                            (or (:entries doc) []))))
-            store)))
-      {})
-     (reset! storage))
-    (log-storage-summary! (format "Loaded XTDB data (%s)" db-host)
-                          @storage))
-  (add-watch
-   storage
-   :to-xtdb
-   (fn [_name _atom old-val new-val]
-     (let [old-keys (keys old-val)
-           new-keys (keys new-val)
-           removed (remove (set new-keys) old-keys)
-           node (xt/client {:host db-host})]
-       (xt/submit-tx
-        node
-        (concat
-         (for [id removed]
-           [:delete-docs :journals id])
-         (for [doc new-val]
-           [:put-docs :journals
-            (merge {:xt/id (first doc)} (second doc))])))))))
 
 (defn- datahike-doc->journal
   [entity]
@@ -542,14 +501,9 @@
       (reset! storage parsed))))
 
 (defn connect-db
-  "Connect storage atom to XTDB or Datahike.
-   Accepts db-host for XTDB, or [backend target] e.g. [\"datahike\" path]."
-  ([target]
-   (connect-xtdb! target))
-  ([backend target]
-   (case (str/lower-case (or backend "xtdb"))
-     ("datahike" "dh") (connect-datahike! target)
-     (connect-xtdb! target))))
+  "Connect storage atom to Datahike persistence at target path."
+  [target]
+  (connect-datahike! target))
 
 (defn stop-server!
   []
@@ -560,49 +514,42 @@
 
 (defn start-server!
   ([port]
-   (start-server! port nil nil))
-  ([port backend-or-host]
-   (start-server! port backend-or-host nil))
-  ([port backend-or-host target]
+   (start-server! port nil))
+  ([port db-path]
    (if (nil? @server)
      (do
        (cond
-         (and backend-or-host target)
-         (connect-db backend-or-host target)
-
-         backend-or-host
-         (connect-db backend-or-host)
+         db-path
+         (connect-db db-path)
 
          (System/getenv "DATAHIKE_PATH")
          (connect-datahike! (System/getenv "DATAHIKE_PATH"))
 
-         (System/getenv "dbhost")
-         (connect-xtdb! (System/getenv "dbhost")))
+         (System/getenv "target")
+         (connect-datahike! (System/getenv "target")))
        (reset! server (hks/run-server #'app {:port port}))
        (tel/log! :info (format "Server started on port %d" port))
        (log-storage-summary! "Server startup storage summary" @storage))
      "server already running")))
 
 (defn -main
-  [& [cmd-or-port arg1 arg2]]
+  [& [cmd-or-port arg1]]
   (case cmd-or-port
     "dump"
-    (let [backend (or arg1 (System/getenv "backend") "datahike")
-          target (or arg2 (System/getenv "target")
+    (let [target (or arg1 (System/getenv "target")
                      (System/getenv "DATAHIKE_PATH") "/var/lib/datahike")]
-      (connect-db backend target)
+      (connect-db target)
       (dump-db!)
       (disconnect-db!)
       (System/exit 0))
 
     "load"
-    (let [backend (or arg1 (System/getenv "backend") "datahike")
-          target (or arg2 (System/getenv "target")
+    (let [target (or arg1 (System/getenv "target")
                      (System/getenv "DATAHIKE_PATH") "/var/lib/datahike")]
-      (connect-db backend target)
+      (connect-db target)
       (load-db! *in*)
       (disconnect-db!)
       (System/exit 0))
 
     (let [p (if cmd-or-port (Integer/parseInt cmd-or-port) 6000)]
-      (start-server! p arg1 arg2))))
+      (start-server! p arg1))))

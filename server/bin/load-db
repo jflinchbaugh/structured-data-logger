@@ -1,11 +1,10 @@
 #!/bin/sh
 set -e
 
-BACKEND="${1:-${backend:-datahike}}"
-TARGET="${2:-${target:-${DATAHIKE_PATH:-/var/lib/datahike}}}"
+TARGET="${1:-${target:-${DATAHIKE_PATH:-/var/lib/datahike}}}"
 
 exec java \
     --add-opens=java.base/java.nio=ALL-UNNAMED \
     --enable-native-access=ALL-UNNAMED \
     -server -Xms64m -Xmx256m \
-    -jar /app/app.jar load "${BACKEND}" "${TARGET}"
+    -jar /app/app.jar load "${TARGET}"

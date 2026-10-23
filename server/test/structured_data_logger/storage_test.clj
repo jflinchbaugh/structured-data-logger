@@ -31,8 +31,8 @@
                     (reverse (file-seq f))))
             (catch Exception _ nil)))))))
 
-(deftest parallel-storage-migration-test
-  (testing "dual storage sync allows migrating data between xtdb and datahike or dual writes"
+(deftest parallel-storage-test
+  (testing "datahike storage persist and reload document"
     (let [tmp-dir (str "/tmp/datahike-dual-" (java.util.UUID/randomUUID))]
       (try
         (sut/connect-datahike! tmp-dir)
@@ -53,7 +53,7 @@
             (catch Exception _ nil)))))))
 
 (deftest dump-and-load-test
-  (testing "dump-db and load-db roundtrip journals across backends"
+  (testing "dump-db and load-db roundtrip journals"
     (let [dh-dir-1 (str "/tmp/dh-dump-1-" (java.util.UUID/randomUUID))
           dh-dir-2 (str "/tmp/dh-dump-2-" (java.util.UUID/randomUUID))
           backup-file (java.io.File/createTempFile "journal-dump" ".edn")]
