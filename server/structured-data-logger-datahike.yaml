@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: structured-data-logger-server
+spec:
+  restartPolicy: on-failure
+  containers:
+    - name: api
+      image: localhost/structured-data-logger-server:latest
+      ports:
+        - containerPort: 6000
+          hostIp: 127.0.0.1
+          hostPort: 6000
+      env:
+        - name: port
+          value: "6000"
+        - name: backend
+          value: "datahike"
+        - name: target
+          value: "/var/lib/datahike/journal"
+      volumeMounts:
+        - mountPath: /var/lib/datahike
+          name: datahike-data
+  volumes:
+    - name: datahike-data
+      persistentVolumeClaim:
+        claimName: structured-data-logger-datahike-data

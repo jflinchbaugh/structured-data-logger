@@ -2,7 +2,7 @@
 
 A mobile-friendly application for collecting and reporting on structured,
 tagged data as journal entries with persistent SCI code dashboards and
-XTDB-backed server synchronization.
+Datahike / XTDB-backed server synchronization.
 
 ## Architecture Overview
 
@@ -13,7 +13,7 @@ The repository is structured into two main components:
   Supports offline-first operation with LocalStorage and build-time
   cache busting.
 - **[`server/`](server/README.md)**: Backend REST API server built with
-  Clojure, HTTP-Kit, Reitit, Buddy Auth, and XTDB v2. Includes Podman
+  Clojure, HTTP-Kit, Reitit, Buddy Auth, Datahike, and XTDB v2. Includes Podman
   Kubernetes Quadlet files for rootless container deployment.
 
 ## Core Capabilities

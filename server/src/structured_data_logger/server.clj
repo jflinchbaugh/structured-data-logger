@@ -8,11 +8,16 @@
             [buddy.auth.middleware :as buddy]
             [buddy.auth.backends :as backends]
             [buddy.hashers :as hashers]
+            [datahike.api :as d]
             [xtdb.api :as xt]
             [taoensso.telemere :as tel]
+            [clojure.edn :as edn]
             [clojure.data.json :as json]
             [clojure.string :as str]
             [tick.core :as t]))
+
+;; Configure Telemere to output logs to stderr so stdout remains clean for EDN
+(tel/add-handler! :default/console (tel/handler:console {:stream :err}))
 
 (def ^:const realm "structured-data-journal")
 (def ^:const base-url "/journal")
@@ -24,6 +29,7 @@
 
 (defonce storage (atom {}))
 (defonce server (atom nil))
+(defonce db-conn (atom nil))
 
 (defn api-response
   ([code body]
@@ -108,24 +114,63 @@
          200
          (format "'%s' created. Access it as '%s'." id resource))))))
 
+(defn storage-summary
+  "Returns a summary map of current storage state: journal count,
+   entry count, and last tx IDs."
+  [store]
+  (let [j-count (count store)
+        total-entries (reduce + 0 (map (fn [[_ data]]
+                                         (count (:entries data)))
+                                       store))
+        total-txs (reduce + 0 (map (fn [[_ data]]
+                                     (count (:tx-log data)))
+                                   store))]
+    {:journals j-count
+     :entries total-entries
+     :transactions total-txs}))
+
+(defn- log-storage-summary!
+  [context store]
+  (let [summary (storage-summary store)]
+    (tel/log! :info
+              (format "%s: %d journals, %d entries, %d transactions"
+                      context
+                      (:journals summary)
+                      (:entries summary)
+                      (:transactions summary)))))
+
 (defn download-handler
   [req]
   (if-not (:identity req)
     (not-found)
     (let [id (get-journal-id req)
+          login (:identity req)
           record (get @storage id)]
       (if-let [doc (:document record)]
-        (api-response 200 doc "application/json")
-        (json-response 200 {:entries (or (:entries record) [])
-                            :last-tx-id (or (:last-tx-id record) 0)})))))
+        (do
+          (tel/log! :info
+                    (format "Download document for '%s' by '%s' (%d bytes)"
+                            id login (count doc)))
+          (api-response 200 doc "application/json"))
+        (let [entries (or (:entries record) [])
+              last-tx (or (:last-tx-id record) 0)]
+          (tel/log! :info
+                    (format "Download journal '%s' by '%s' (%d entries, last-tx-id %d)"
+                            id login (count entries) last-tx))
+          (json-response 200 {:entries entries
+                              :last-tx-id last-tx}))))))
 
 (defn upload-handler
   [req]
   (if-not (:identity req)
     (not-found)
     (let [id (get-journal-id req)
+          login (:identity req)
           body-str (rur/body-string req)]
       (swap! storage assoc-in [id :document] body-str)
+      (tel/log! :info
+                (format "Upload document for '%s' by '%s' (%d bytes)"
+                        id login (count (or body-str ""))))
       (api-response 200 body-str "application/json"))))
 
 (defn valid-entry?
@@ -312,10 +357,32 @@
       (rmd/wrap-defaults
        (assoc rmd/api-defaults :proxy true))))
 
-(defn connect-db
+(def ^:const datahike-store-id #uuid "550e8400-e29b-41d4-a716-446655440001")
+
+(defn datahike-config
+  [path]
+  {:store {:backend :file
+           :path (or path "/var/lib/datahike")
+           :id datahike-store-id}
+   :schema-flexibility :read
+   :value-caps :default
+   :keep-history? false})
+
+(defn disconnect-db!
+  "Disconnect storage atom from database watches and releases connections."
+  []
+  (remove-watch storage :to-xtdb)
+  (remove-watch storage :to-datahike)
+  (when-let [conn @db-conn]
+    (try
+      (d/release conn)
+      (catch Exception _ nil))
+    (reset! db-conn nil)))
+
+(defn connect-xtdb!
   "Connect storage atom to XTDB."
   [db-host]
-  (remove-watch storage :to-xtdb)
+  (disconnect-db!)
   (let [node (xt/client {:host db-host})]
     (->>
      (xt/q node
@@ -331,7 +398,9 @@
                                             (or (:entries doc) []))))
             store)))
       {})
-     (reset! storage)))
+     (reset! storage))
+    (log-storage-summary! (format "Loaded XTDB data (%s)" db-host)
+                          @storage))
   (add-watch
    storage
    :to-xtdb
@@ -349,24 +418,191 @@
            [:put-docs :journals
             (merge {:xt/id (first doc)} (second doc))])))))))
 
+(defn- datahike-doc->journal
+  [entity]
+  (let [entries-raw (:journal/entries entity)
+        parsed-entries (when entries-raw
+                         (try
+                           (edn/read-string entries-raw)
+                           (catch Exception _ [])))
+        tx-log-raw (:journal/tx-log entity)
+        parsed-tx-log (when tx-log-raw
+                        (try
+                          (edn/read-string tx-log-raw)
+                          (catch Exception _ [])))
+        doc-raw (:journal/document entity)
+        parsed-doc (when doc-raw
+                     (try
+                       (edn/read-string doc-raw)
+                       (catch Exception _ doc-raw)))
+        base {:login (:journal/login entity)
+              :password (:journal/password entity)
+              :last-tx-id (or (:journal/last-tx-id entity) 0)
+              :tx-log (or parsed-tx-log [])
+              :entries (filterv valid-entry? (or parsed-entries []))}]
+    (if (some? parsed-doc)
+      (assoc base :document parsed-doc)
+      base)))
+
+(defn- journal->datahike-doc
+  [id data]
+  (let [base {:journal/id id
+              :journal/login (:login data)
+              :journal/password (:password data)
+              :journal/last-tx-id (or (:last-tx-id data) 0)
+              :journal/tx-log (pr-str (or (:tx-log data) []))
+              :journal/entries (pr-str (filterv valid-entry?
+                                               (or (:entries data) [])))}]
+    (if (some? (:document data))
+      (assoc base :journal/document (pr-str (:document data)))
+      base)))
+
+(defn connect-datahike!
+  "Connect storage atom to Datahike file-based database at path."
+  ([]
+   (connect-datahike! nil))
+  ([path]
+   (disconnect-db!)
+   (let [cfg (datahike-config path)]
+     (when-not (d/database-exists? cfg)
+       (d/create-database cfg))
+     (let [conn (d/connect cfg)]
+       (reset! db-conn conn)
+       (d/transact conn [{:db/ident :journal/id
+                          :db/valueType :db.type/string
+                          :db/cardinality :db.cardinality/one
+                          :db/unique :db.unique/identity}])
+       (let [db @conn
+             results (d/q '[:find ?e :where [?e :journal/id]] db)
+             loaded (reduce
+                     (fn [store [eid]]
+                       (let [entity (into {} (d/entity db eid))
+                             jid (:journal/id entity)]
+                         (if jid
+                           (assoc store jid (datahike-doc->journal entity))
+                           store)))
+                     {}
+                     results)]
+         (reset! storage loaded)
+         (log-storage-summary!
+          (format "Loaded Datahike data (%s)" (or path "default"))
+          @storage))))
+   (add-watch
+    storage
+    :to-datahike
+    (fn [_name _atom old-val new-val]
+      (when-let [conn @db-conn]
+        (let [old-keys (keys old-val)
+              new-keys (keys new-val)
+              removed (remove (set new-keys) old-keys)
+              retractions (mapv (fn [id]
+                                  [:db.fn/retractEntity [:journal/id id]])
+                                removed)
+              upserts (mapv (fn [[id data]]
+                              (journal->datahike-doc id data))
+                            new-val)
+              doc-clears (into []
+                               (comp
+                                (filter (fn [[id data]]
+                                          (and (nil? (:document data))
+                                               (get-in old-val
+                                                       [id :document]))))
+                                (map (fn [[id _]]
+                                       [:db/retract [:journal/id id]
+                                        :journal/document])))
+                               new-val)
+              tx-ops (vec (concat retractions doc-clears upserts))]
+          (when (seq tx-ops)
+            (d/transact conn tx-ops))))))))
+
+(defn dump-db!
+  "Dump all journal data currently in storage atom to an EDN file or OutputStream.
+   Defaults to stdout if no target is provided."
+  ([]
+   (dump-db! *out*))
+  ([target]
+   (let [content (pr-str @storage)]
+     (if (string? target)
+       (spit target content)
+       (binding [*out* target]
+         (println content))))))
+
+(defn load-db!
+  "Load journal data from an EDN file, string, or InputStream into storage.
+   Replaces the contents of storage, triggering active backend watches."
+  [source]
+  (let [raw (if (string? source)
+              (let [f (java.io.File. source)]
+                (if (.exists f)
+                  (slurp f)
+                  source))
+              (slurp source))
+        parsed (edn/read-string raw)]
+    (when (map? parsed)
+      (reset! storage parsed))))
+
+(defn connect-db
+  "Connect storage atom to XTDB or Datahike.
+   Accepts db-host for XTDB, or [backend target] e.g. [\"datahike\" path]."
+  ([target]
+   (connect-xtdb! target))
+  ([backend target]
+   (case (str/lower-case (or backend "xtdb"))
+     ("datahike" "dh") (connect-datahike! target)
+     (connect-xtdb! target))))
+
 (defn stop-server!
   []
+  (disconnect-db!)
   (when-let [s @server]
     (s :timeout 100)
     (reset! server nil)))
 
 (defn start-server!
   ([port]
-   (start-server! port nil))
-  ([port db-host]
+   (start-server! port nil nil))
+  ([port backend-or-host]
+   (start-server! port backend-or-host nil))
+  ([port backend-or-host target]
    (if (nil? @server)
      (do
-       (when db-host (connect-db db-host))
+       (cond
+         (and backend-or-host target)
+         (connect-db backend-or-host target)
+
+         backend-or-host
+         (connect-db backend-or-host)
+
+         (System/getenv "DATAHIKE_PATH")
+         (connect-datahike! (System/getenv "DATAHIKE_PATH"))
+
+         (System/getenv "dbhost")
+         (connect-xtdb! (System/getenv "dbhost")))
        (reset! server (hks/run-server #'app {:port port}))
-       (tel/log! :info (format "Server started on port %d" port)))
+       (tel/log! :info (format "Server started on port %d" port))
+       (log-storage-summary! "Server startup storage summary" @storage))
      "server already running")))
 
 (defn -main
-  [& [port db-host]]
-  (let [p (if port (Integer/parseInt port) 6000)]
-    (start-server! p db-host)))
+  [& [cmd-or-port arg1 arg2]]
+  (case cmd-or-port
+    "dump"
+    (let [backend (or arg1 (System/getenv "backend") "datahike")
+          target (or arg2 (System/getenv "target")
+                     (System/getenv "DATAHIKE_PATH") "/var/lib/datahike")]
+      (connect-db backend target)
+      (dump-db!)
+      (disconnect-db!)
+      (System/exit 0))
+
+    "load"
+    (let [backend (or arg1 (System/getenv "backend") "datahike")
+          target (or arg2 (System/getenv "target")
+                     (System/getenv "DATAHIKE_PATH") "/var/lib/datahike")]
+      (connect-db backend target)
+      (load-db! *in*)
+      (disconnect-db!)
+      (System/exit 0))
+
+    (let [p (if cmd-or-port (Integer/parseInt cmd-or-port) 6000)]
+      (start-server! p arg1 arg2))))

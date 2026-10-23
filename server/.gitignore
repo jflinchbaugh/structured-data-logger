@@ -27,3 +27,5 @@
 /checkouts
 /classes
 /target
+.uberjar-built
+backup*.edn

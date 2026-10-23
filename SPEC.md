@@ -38,7 +38,7 @@
   - clojure
   - deps.edn
   - podman kubernetes quadlet
-  - database: xtdb
+  - database: datahike (or xtdb)
   - json/rest api for syncing
   - authentication for client user
 

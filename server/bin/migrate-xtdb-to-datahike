@@ -1,0 +1,73 @@
+#!/bin/sh
+set -e
+
+BACKUP_FILE="${1:-backup-migration.edn}"
+VERIFY_FILE="backup-verify.edn"
+TARGET_DIR="${target:-/var/lib/datahike/journal}"
+
+echo "==> Starting XTDB pod via Kubernetes YAML..."
+podman kube play structured-data-logger-xtdb.yaml
+
+cleanup() {
+    echo "==> Stopping XTDB pod..."
+    podman kube down structured-data-logger-xtdb.yaml || true
+}
+trap cleanup EXIT INT TERM
+
+echo "==> Waiting for XTDB to be ready..."
+RETRIES=30
+while [ $RETRIES -gt 0 ]; do
+    if pg_isready -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
+        echo "==> XTDB is accepting connections."
+        # Give pgwire server a moment to finish node startup
+        sleep 2
+        break
+    fi
+    sleep 1
+    RETRIES=$((RETRIES - 1))
+done
+
+if [ $RETRIES -eq 0 ]; then
+    echo "ERROR: Timed out waiting for XTDB pod to start." >&2
+    exit 1
+fi
+
+echo "==> Dumping journals from running XTDB instance to ${BACKUP_FILE}..."
+podman run --rm --network host \
+    localhost/structured-data-logger-server:latest dump-db xtdb 127.0.0.1 > "${BACKUP_FILE}"
+
+echo "==> Dump successful ($(wc -c < "${BACKUP_FILE}") bytes)."
+
+echo "==> Loading journals into Datahike volume (structured-data-logger-datahike-data)..."
+podman run --rm -i \
+    -v structured-data-logger-datahike-data:/var/lib/datahike \
+    localhost/structured-data-logger-server:latest load-db datahike "${TARGET_DIR}" < "${BACKUP_FILE}"
+
+echo "==> Dumping journals from Datahike database to verify..."
+podman run --rm \
+    -v structured-data-logger-datahike-data:/var/lib/datahike \
+    localhost/structured-data-logger-server:latest dump-db datahike "${TARGET_DIR}" > "${VERIFY_FILE}"
+
+echo "==> Verifying data integrity between XTDB and Datahike..."
+DIFF_OUTPUT=$(diff -u "${BACKUP_FILE}" "${VERIFY_FILE}" || true)
+if [ -n "${DIFF_OUTPUT}" ]; then
+    # In case EDN map key ordering differs, verify semantic equality via Clojure
+    EQUAL=$(clj -M -e '
+(require (quote [clojure.edn :as edn]))
+(let [f1 (slurp "'"${BACKUP_FILE}"'")
+      f2 (slurp "'"${VERIFY_FILE}"'")
+      m1 (edn/read-string f1)
+      m2 (edn/read-string f2)]
+  (if (= m1 m2)
+    (println "true")
+    (println "false")))' 2>/dev/null || echo "false")
+    if [ "${EQUAL}" != "true" ]; then
+        echo "ERROR: Verification failed! Data in Datahike does not match XTDB dump." >&2
+        echo "${DIFF_OUTPUT}" >&2
+        exit 1
+    fi
+fi
+
+echo "==> Verification successful: Datahike database matches XTDB export exactly!"
+echo "==> Migration to Datahike complete!"
+echo "==> You can now run: make run-datahike (or make start-datahike)"
