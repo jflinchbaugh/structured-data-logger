@@ -16,6 +16,7 @@
         (sut/connect-datahike! tmp-dir)
         (is (contains? @sut/storage "user-dh"))
         (is (= "dh@example.com" (get-in @sut/storage ["user-dh" :login])))
+        (is (= 1 (get-in @sut/storage ["user-dh" :schema-version])))
         (sut/unregister-journal! "user-dh")
         (is (not (contains? @sut/storage "user-dh")))
         (sut/disconnect-db!)
@@ -32,17 +33,16 @@
             (catch Exception _ nil)))))))
 
 (deftest parallel-storage-test
-  (testing "datahike storage persist and reload document"
+  (testing "datahike storage does not contain document"
     (let [tmp-dir (str "/tmp/datahike-dual-" (java.util.UUID/randomUUID))]
       (try
         (sut/connect-datahike! tmp-dir)
         (sut/register-journal! "user-parallel" "par@example.com" "pw123")
-        (swap! sut/storage assoc-in ["user-parallel" :document] {:theme "dark"})
+        (is (not (contains? (get @sut/storage "user-parallel") :document)))
         (sut/disconnect-db!)
-        ;; Reconnect to verify document updated and stored
         (reset! sut/storage {})
         (sut/connect-datahike! tmp-dir)
-        (is (= {:theme "dark"} (get-in @sut/storage ["user-parallel" :document])))
+        (is (not (contains? (get @sut/storage "user-parallel") :document)))
         (finally
           (sut/disconnect-db!)
           (reset! sut/storage {})
@@ -61,7 +61,6 @@
         ;; Setup data in DB 1
         (sut/connect-datahike! dh-dir-1)
         (sut/register-journal! "user-dump" "dump@example.com" "pw123")
-        (swap! sut/storage assoc-in ["user-dump" :document] {:key "value"})
         (sut/dump-db! (.getAbsolutePath backup-file))
         (sut/disconnect-db!)
 
@@ -72,14 +71,12 @@
         (sut/load-db! (.getAbsolutePath backup-file))
         (is (contains? @sut/storage "user-dump"))
         (is (= "dump@example.com" (get-in @sut/storage ["user-dump" :login])))
-        (is (= {:key "value"} (get-in @sut/storage ["user-dump" :document])))
 
         (sut/disconnect-db!)
         ;; Verify persistence in DB 2
         (reset! sut/storage {})
         (sut/connect-datahike! dh-dir-2)
         (is (contains? @sut/storage "user-dump"))
-        (is (= {:key "value"} (get-in @sut/storage ["user-dump" :document])))
         (finally
           (sut/disconnect-db!)
           (reset! sut/storage {})

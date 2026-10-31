@@ -57,6 +57,8 @@
   [_]
   (api-response 200 "pong"))
 
+(def ^:const current-schema-version 1)
+
 (defn get-journal-id
   [req]
   (get-in req [:path-params :id]))
@@ -69,10 +71,10 @@
    id
    {:login login
     :password (hashers/derive password)
+    :schema-version current-schema-version
     :last-tx-id 0
     :tx-log []
-    :entries []
-    :document nil})
+    :entries []})
   (tel/log! :info (format "Registered '%s' for '%s'" id login)))
 
 (defn unregister-journal!
@@ -144,33 +146,14 @@
     (not-found)
     (let [id (get-journal-id req)
           login (:identity req)
-          record (get @storage id)]
-      (if-let [doc (:document record)]
-        (do
-          (tel/log! :info
-                    (format "Download document for '%s' by '%s' (%d bytes)"
-                            id login (count doc)))
-          (api-response 200 doc "application/json"))
-        (let [entries (or (:entries record) [])
-              last-tx (or (:last-tx-id record) 0)]
-          (tel/log! :info
-                    (format "Download journal '%s' by '%s' (%d entries, last-tx-id %d)"
-                            id login (count entries) last-tx))
-          (json-response 200 {:entries entries
-                              :last-tx-id last-tx}))))))
-
-(defn upload-handler
-  [req]
-  (if-not (:identity req)
-    (not-found)
-    (let [id (get-journal-id req)
-          login (:identity req)
-          body-str (rur/body-string req)]
-      (swap! storage assoc-in [id :document] body-str)
+          record (get @storage id)
+          entries (or (:entries record) [])
+          last-tx (or (:last-tx-id record) 0)]
       (tel/log! :info
-                (format "Upload document for '%s' by '%s' (%d bytes)"
-                        id login (count (or body-str ""))))
-      (api-response 200 body-str "application/json"))))
+                (format "Download journal '%s' by '%s' (%d entries, last-tx-id %d)"
+                        id login (count entries) last-tx))
+      (json-response 200 {:entries entries
+                          :last-tx-id last-tx}))))
 
 (defn valid-entry?
   "Returns true if e is a valid entry map with non-blank id and timestamp."
@@ -339,7 +322,6 @@
                           [authenticated-for-journal
                            identity-required-wrapper]
                           :get download-handler
-                          :post upload-handler
                           :delete unregister-handler}]
         ["/sync/:id" {:middleware
                       [authenticated-for-journal
@@ -388,33 +370,24 @@
         parsed-tx-log (when tx-log-raw
                         (try
                           (edn/read-string tx-log-raw)
-                          (catch Exception _ [])))
-        doc-raw (:journal/document entity)
-        parsed-doc (when doc-raw
-                     (try
-                       (edn/read-string doc-raw)
-                       (catch Exception _ doc-raw)))
-        base {:login (:journal/login entity)
-              :password (:journal/password entity)
-              :last-tx-id (or (:journal/last-tx-id entity) 0)
-              :tx-log (or parsed-tx-log [])
-              :entries (filterv valid-entry? (or parsed-entries []))}]
-    (if (some? parsed-doc)
-      (assoc base :document parsed-doc)
-      base)))
+                          (catch Exception _ [])))]
+    {:login (:journal/login entity)
+     :password (:journal/password entity)
+     :schema-version (or (:journal/schema-version entity) current-schema-version)
+     :last-tx-id (or (:journal/last-tx-id entity) 0)
+     :tx-log (or parsed-tx-log [])
+     :entries (filterv valid-entry? (or parsed-entries []))}))
 
 (defn- journal->datahike-doc
   [id data]
-  (let [base {:journal/id id
-              :journal/login (:login data)
-              :journal/password (:password data)
-              :journal/last-tx-id (or (:last-tx-id data) 0)
-              :journal/tx-log (pr-str (or (:tx-log data) []))
-              :journal/entries (pr-str (filterv valid-entry?
-                                               (or (:entries data) [])))}]
-    (if (some? (:document data))
-      (assoc base :journal/document (pr-str (:document data)))
-      base)))
+  {:journal/id id
+   :journal/login (:login data)
+   :journal/password (:password data)
+   :journal/schema-version (or (:schema-version data) current-schema-version)
+   :journal/last-tx-id (or (:last-tx-id data) 0)
+   :journal/tx-log (pr-str (or (:tx-log data) []))
+   :journal/entries (pr-str (filterv valid-entry?
+                                    (or (:entries data) [])))})
 
 (defn connect-datahike!
   "Connect storage atom to Datahike file-based database at path."
@@ -460,17 +433,7 @@
               upserts (mapv (fn [[id data]]
                               (journal->datahike-doc id data))
                             new-val)
-              doc-clears (into []
-                               (comp
-                                (filter (fn [[id data]]
-                                          (and (nil? (:document data))
-                                               (get-in old-val
-                                                       [id :document]))))
-                                (map (fn [[id _]]
-                                       [:db/retract [:journal/id id]
-                                        :journal/document])))
-                               new-val)
-              tx-ops (vec (concat retractions doc-clears upserts))]
+              tx-ops (vec (concat retractions upserts))]
           (when (seq tx-ops)
             (d/transact conn tx-ops))))))))
 
