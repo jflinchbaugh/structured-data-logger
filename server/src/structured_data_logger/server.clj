@@ -57,7 +57,7 @@
   [_]
   (api-response 200 "pong"))
 
-(def ^:const current-schema-version 1)
+(def ^:const current-schema-version 2)
 
 (defn get-journal-id
   [req]
@@ -267,8 +267,8 @@
           journal (get @storage id)
           all-txs (or (:tx-log journal) [])
           filtered-txs (filterv (fn [tx]
-                                 (and (> (:tx-id tx) since-tx-id)
-                                      (valid-op? tx)))
+                                  (and (> (:tx-id tx) since-tx-id)
+                                       (valid-op? tx)))
                                 all-txs)
           now-str (str (t/instant))]
       (json-response
@@ -359,13 +359,45 @@
       (catch Exception _ nil))
     (reset! db-conn nil)))
 
+(defn- entry->datahike-entity
+  [entry]
+  (let [base {:entry/id (:id entry)
+              :entry/timestamp (:timestamp entry)
+              :entry/description (or (:description entry) "")}
+        data-eav (reduce-kv (fn [m k v]
+                              (let [attr (keyword "entry.data" (name k))]
+                                (assoc m attr v)))
+                            {}
+                            (:data entry))]
+    (merge base data-eav)))
+
+(defn- datahike-entity->entry
+  [entity]
+  (let [base {:id (:entry/id entity)
+              :timestamp (:entry/timestamp entity)
+              :description (:entry/description entity)}
+        data-map (reduce-kv (fn [m k v]
+                              (if (= "entry.data" (namespace k))
+                                (assoc m (keyword (name k)) v)
+                                m))
+                            {}
+                            entity)]
+    (if (seq data-map)
+      (assoc base :data data-map)
+      base)))
+
 (defn- datahike-doc->journal
   [entity]
   (let [entries-raw (:journal/entries entity)
-        parsed-entries (when entries-raw
-                         (try
-                           (edn/read-string entries-raw)
-                           (catch Exception _ [])))
+        entries (cond
+                  (string? entries-raw)
+                  (try
+                    (edn/read-string entries-raw)
+                    (catch Exception _ []))
+                  (coll? entries-raw)
+                  (mapv datahike-entity->entry entries-raw)
+                  :else
+                  [])
         tx-log-raw (:journal/tx-log entity)
         parsed-tx-log (when tx-log-raw
                         (try
@@ -376,7 +408,7 @@
      :schema-version (or (:journal/schema-version entity) current-schema-version)
      :last-tx-id (or (:journal/last-tx-id entity) 0)
      :tx-log (or parsed-tx-log [])
-     :entries (filterv valid-entry? (or parsed-entries []))}))
+     :entries (filterv valid-entry? (or entries []))}))
 
 (defn- journal->datahike-doc
   [id data]
@@ -386,8 +418,41 @@
    :journal/schema-version (or (:schema-version data) current-schema-version)
    :journal/last-tx-id (or (:last-tx-id data) 0)
    :journal/tx-log (pr-str (or (:tx-log data) []))
-   :journal/entries (pr-str (filterv valid-entry?
-                                    (or (:entries data) [])))})
+   :journal/entries (mapv entry->datahike-entity
+                          (filterv valid-entry? (or (:entries data) [])))})
+
+(defn- migrate-legacy-journals!
+  "Migrates journals storing legacy EDN string :journal/entries to
+   schema version 2 (:db.type/ref component entities)."
+  [conn]
+  (let [db @conn
+        legacy-entries (d/q '[:find ?jid ?entries-str
+                              :where [?e :journal/id ?jid]
+                              [?e :journal/entries ?entries-str]
+                              [(string? ?entries-str)]]
+                            db)]
+    (when (seq legacy-entries)
+      (tel/log! :info
+                (format "Migrating %d legacy journals to schema v2"
+                        (count legacy-entries)))
+      (doseq [[jid s] legacy-entries]
+        (let [entries (try
+                        (edn/read-string s)
+                        (catch Exception _ []))
+              clean (filterv valid-entry? entries)
+              retract-tx [[:db/retract [:journal/id jid] :journal/entries s]]]
+          (d/transact conn retract-tx)
+          (d/transact conn [{:db/ident :journal/entries
+                             :db/valueType :db.type/ref
+                             :db/cardinality :db.cardinality/many
+                             :db/isComponent true}
+                            {:db/ident :entry/id
+                             :db/valueType :db.type/string
+                             :db/cardinality :db.cardinality/one
+                             :db/unique :db.unique/identity}])
+          (d/transact conn [{:journal/id jid
+                             :journal/schema-version 2
+                             :journal/entries (mapv entry->datahike-entity clean)}]))))))
 
 (defn connect-datahike!
   "Connect storage atom to Datahike file-based database at path."
@@ -404,11 +469,28 @@
                           :db/valueType :db.type/string
                           :db/cardinality :db.cardinality/one
                           :db/unique :db.unique/identity}])
+       (migrate-legacy-journals! conn)
+       (d/transact conn [{:db/ident :journal/entries
+                          :db/valueType :db.type/ref
+                          :db/cardinality :db.cardinality/many
+                          :db/isComponent true}
+                         {:db/ident :entry/id
+                          :db/valueType :db.type/string
+                          :db/cardinality :db.cardinality/one
+                          :db/unique :db.unique/identity}])
        (let [db @conn
              results (d/q '[:find ?e :where [?e :journal/id]] db)
              loaded (reduce
                      (fn [store [eid]]
-                       (let [entity (into {} (d/entity db eid))
+                       (let [entity (d/pull db
+                                            '[:journal/id
+                                              :journal/login
+                                              :journal/password
+                                              :journal/schema-version
+                                              :journal/last-tx-id
+                                              :journal/tx-log
+                                              {:journal/entries [*]}]
+                                            eid)
                              jid (:journal/id entity)]
                          (if jid
                            (assoc store jid (datahike-doc->journal entity))
@@ -463,7 +545,7 @@
     (when (map? parsed)
       (reset! storage parsed))))
 
-(defn connect-db
+(defn connect-db!
   "Connect storage atom to Datahike persistence at target path."
   [target]
   (connect-datahike! target))
@@ -483,7 +565,7 @@
      (do
        (cond
          db-path
-         (connect-db db-path)
+         (connect-db! db-path)
 
          (System/getenv "DATAHIKE_PATH")
          (connect-datahike! (System/getenv "DATAHIKE_PATH"))
@@ -501,7 +583,7 @@
     "dump"
     (let [target (or arg1 (System/getenv "target")
                      (System/getenv "DATAHIKE_PATH") "/var/lib/datahike")]
-      (connect-db target)
+      (connect-db! target)
       (dump-db!)
       (disconnect-db!)
       (System/exit 0))
@@ -509,10 +591,27 @@
     "load"
     (let [target (or arg1 (System/getenv "target")
                      (System/getenv "DATAHIKE_PATH") "/var/lib/datahike")]
-      (connect-db target)
+      (connect-db! target)
       (load-db! *in*)
       (disconnect-db!)
       (System/exit 0))
 
     (let [p (if cmd-or-port (Integer/parseInt cmd-or-port) 6000)]
       (start-server! p arg1))))
+
+(comment
+
+  (start-server! 8080 "journal")
+
+  (stop-server!)
+
+  (let [db (d/db @db-conn)
+        results (d/q '[:find ?e :where [?e :journal/id]] db)
+        loaded-1 (map (fn [[id]] (d/pull db '[:journal/id {:journal/entries [*]}] id)) results)
+        loaded-2 (map (fn [[id]] (d/pull db '[:journal/id :journal/entries] id)) results)]
+    [loaded-1 loaded-2])
+
+
+
+
+  .)
