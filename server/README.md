@@ -130,7 +130,7 @@ To run interactively with Datahike mounted storage:
 
 ```bash
 podman run --rm -it -p 6000:6000 -e port=6000 \
-  -e target=/var/lib/datahike \
+  -e DATAHIKE_PATH=/var/lib/datahike \
   -v structured-data-logger-datahike-data:/var/lib/datahike \
   localhost/structured-data-logger-server:latest
 ```

@@ -14,7 +14,7 @@ spec:
       env:
         - name: port
           value: "6000"
-        - name: target
+        - name: DATAHIKE_PATH
           value: "/var/lib/datahike/journal"
       volumeMounts:
         - mountPath: /var/lib/datahike
