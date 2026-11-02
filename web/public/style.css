@@ -66,19 +66,22 @@ h1,
 
 .tab-btn {
   flex: 1;
-  padding: 8px 10px;
+  padding: 10px 12px;
+  min-height: 44px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   font-weight: 600;
-  font-size: 0.88rem;
+  font-size: 0.95rem;
   cursor: pointer;
   text-align: center;
   transition: all 0.15s ease;
   white-space: nowrap;
   text-decoration: none;
   color: inherit;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   box-sizing: border-box;
 }
 
@@ -151,10 +154,11 @@ input:focus, select:focus, textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 16px;
+  padding: 12px 18px;
+  min-height: 44px;
   border-radius: var(--radius);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 1rem;
   cursor: pointer;
   border: none;
   transition: background 0.15s;
@@ -186,8 +190,9 @@ input:focus, select:focus, textarea:focus {
 }
 
 .btn-small {
-  padding: 4px 10px;
-  font-size: 0.8rem;
+  padding: 8px 12px;
+  min-height: 38px;
+  font-size: 0.88rem;
 }
 
 .btn:disabled {
@@ -225,8 +230,11 @@ input:focus, select:focus, textarea:focus {
   background: #f1f5f9;
   border: 1px solid var(--border);
   border-radius: 9999px;
-  padding: 4px 10px;
-  font-size: 0.8rem;
+  padding: 6px 14px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.88rem;
   cursor: pointer;
   color: var(--text);
 }
@@ -269,8 +277,9 @@ input:focus, select:focus, textarea:focus {
 }
 
 .btn-gps {
-  padding: 4px 8px;
-  font-size: 0.9rem;
+  padding: 8px 12px;
+  min-height: 38px;
+  font-size: 1rem;
   line-height: 1;
 }
 
@@ -483,7 +492,8 @@ input:focus, select:focus, textarea:focus {
   }
 
   .tab-btn {
-    padding: 7px 6px;
-    font-size: 0.8rem;
+    padding: 10px 8px;
+    font-size: 0.88rem;
+    min-height: 42px;
   }
 }
