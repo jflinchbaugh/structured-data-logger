@@ -8,12 +8,11 @@
             [buddy.auth.middleware :as buddy]
             [buddy.auth.backends :as backends]
             [buddy.hashers :as hashers]
-            [datahike.api :as d]
             [taoensso.telemere :as tel]
-            [clojure.edn :as edn]
             [clojure.data.json :as json]
             [clojure.string :as str]
-            [tick.core :as t]))
+            [tick.core :as t]
+            [structured-data-logger.db :as db]))
 
 ;; Configure Telemere to output logs to stderr so stdout remains clean for EDN
 (tel/add-handler! :default/console (tel/handler:console {:stream :err}))
@@ -26,9 +25,7 @@
   [s]
   (boolean (and (string? s) (re-matches email-regex (str/trim s)))))
 
-(defonce storage (atom {}))
 (defonce server (atom nil))
-(defonce db-conn (atom nil))
 
 (defn api-response
   ([code body]
@@ -57,34 +54,9 @@
   [_]
   (api-response 200 "pong"))
 
-(def ^:const current-schema-version 2)
-
 (defn get-journal-id
   [req]
   (get-in req [:path-params :id]))
-
-(defn register-journal!
-  [id login password]
-  (swap!
-   storage
-   assoc
-   id
-   {:login login
-    :password (hashers/derive password)
-    :schema-version current-schema-version
-    :last-tx-id 0
-    :tx-log []
-    :entries []})
-  (tel/log! :info (format "Registered '%s' for '%s'" id login)))
-
-(defn unregister-journal!
-  [id]
-  (swap! storage dissoc id)
-  (tel/log! :info (format "Unregistered '%s'" id)))
-
-(defn owner?
-  [login journal]
-  (= (:login journal) login))
 
 (defn parse-json-body
   [req]
@@ -105,34 +77,19 @@
       (not (valid-email? login))
       (api-response 400 "Username must be a valid email address.")
 
-      (get @storage id)
+      (db/journal-exists? id)
       (api-response 200 (format "'%s' already exists" id))
 
       :else
       (do
-        (register-journal! id login password)
+        (db/register-journal! id login password)
         (api-response
          200
          (format "'%s' created. Access it as '%s'." id resource))))))
 
-(defn storage-summary
-  "Returns a summary map of current storage state: journal count,
-   entry count, and last tx IDs."
-  [store]
-  (let [j-count (count store)
-        total-entries (reduce + 0 (map (fn [[_ data]]
-                                         (count (:entries data)))
-                                       store))
-        total-txs (reduce + 0 (map (fn [[_ data]]
-                                     (count (:tx-log data)))
-                                   store))]
-    {:journals j-count
-     :entries total-entries
-     :transactions total-txs}))
-
 (defn- log-storage-summary!
-  [context store]
-  (let [summary (storage-summary store)]
+  [context]
+  (let [summary (db/storage-summary)]
     (tel/log! :info
               (format "%s: %d journals, %d entries, %d transactions"
                       context
@@ -146,99 +103,12 @@
     (not-found)
     (let [id (get-journal-id req)
           login (:identity req)
-          record (get @storage id)
-          entries (or (:entries record) [])
-          last-tx (or (:last-tx-id record) 0)]
+          {:keys [entries last-tx-id]} (db/get-journal-download id)]
       (tel/log! :info
                 (format "Download journal '%s' by '%s' (%d entries, last-tx-id %d)"
-                        id login (count entries) last-tx))
-      (json-response 200 {:entries entries
-                          :last-tx-id last-tx}))))
-
-(defn valid-entry?
-  "Returns true if e is a valid entry map with non-blank id and timestamp."
-  [e]
-  (boolean
-   (and (map? e)
-        (string? (:id e))
-        (not (str/blank? (:id e)))
-        (string? (:timestamp e))
-        (not (str/blank? (:timestamp e))))))
-
-(defn valid-op?
-  [op]
-  (and (map? op)
-       (let [t (name (or (:op op) "put"))]
-         (case t
-           "put" (valid-entry? (:entry op))
-           "delete" (let [tid (or (:id op) (get-in op [:entry :id]))]
-                      (and (string? tid) (not (str/blank? tid))))
-           false))))
-
-(defn- apply-op-to-entries
-  [entries op]
-  (let [clean-entries (filterv valid-entry? (or entries []))
-        op-type (name (or (:op op) "put"))]
-    (case op-type
-      "delete"
-      (let [target-id (or (:id op) (get-in op [:entry :id]))]
-        (if (and (string? target-id) (not (str/blank? target-id)))
-          (vec (remove (fn [e] (= (:id e) target-id)) clean-entries))
-          clean-entries))
-
-      "put"
-      (let [entry (:entry op)]
-        (if (valid-entry? entry)
-          (let [eid (:id entry)
-                existing-idx (first (keep-indexed
-                                     (fn [idx item]
-                                       (when (= (:id item) eid) idx))
-                                     clean-entries))]
-            (if existing-idx
-              (assoc clean-entries existing-idx entry)
-              (conj clean-entries entry)))
-          clean-entries))
-
-      clean-entries)))
-
-(defn- record-transactions!
-  [journal-id new-ops]
-  (let [now-str (str (t/instant))]
-    (swap!
-     storage
-     (fn [store]
-       (let [journal (get store journal-id)
-             tx-log (or (:tx-log journal) [])
-             existing-client-txs (into #{} (keep :client-tx-id tx-log))
-             unseen-ops (->> (or new-ops [])
-                             (filter valid-op?)
-                             (remove (fn [op]
-                                       (and (:client-tx-id op)
-                                            (existing-client-txs
-                                             (:client-tx-id op))))))
-             start-tx-id (or (:last-tx-id journal) 0)
-             indexed-txs (map-indexed
-                          (fn [idx op]
-                            (let [tid (+ start-tx-id (inc idx))
-                                  op-type (name (or (:op op) "put"))]
-                              (merge op
-                                     {:tx-id tid
-                                      :tx-time now-str
-                                      :op op-type})))
-                          unseen-ops)
-             new-last-tx-id (+ start-tx-id (count unseen-ops))
-             updated-log (into tx-log indexed-txs)
-             clean-base (filterv valid-entry? (or (:entries journal) []))
-             updated-entries (reduce apply-op-to-entries
-                                     clean-base
-                                     indexed-txs)
-             sorted-entries (vec (sort-by :timestamp updated-entries))]
-         (assoc store journal-id
-                (assoc journal
-                       :last-tx-id new-last-tx-id
-                       :tx-log updated-log
-                       :entries sorted-entries)))))
-    nil))
+                        id login (count entries) (or last-tx-id 0)))
+      (json-response 200 {:entries (or entries [])
+                          :last-tx-id (or last-tx-id 0)}))))
 
 (defn- normalize-ops
   [payload]
@@ -263,30 +133,28 @@
           payload (parse-json-body req)
           since-tx-id (or (:since-tx-id payload) 0)
           ops (normalize-ops payload)
-          _ (record-transactions! id ops)
-          journal (get @storage id)
-          all-txs (or (:tx-log journal) [])
+          result (db/record-transactions! id ops)
+          all-txs (or (:tx-log result) [])
           filtered-txs (filterv (fn [tx]
                                   (and (> (:tx-id tx) since-tx-id)
-                                       (valid-op? tx)))
+                                       (db/valid-op? tx)))
                                 all-txs)
           now-str (str (t/instant))]
       (json-response
        200
-       {:last-tx-id (or (:last-tx-id journal) 0)
+       {:last-tx-id (or (:last-tx-id result) 0)
         :transactions filtered-txs
-        :entries (filterv valid-entry? (or (:entries journal) []))
+        :entries (or (:entries result) [])
         :server-time now-str}))))
 
 (defn unregister-handler
   [req]
   (let [id (get-journal-id req)
-        journal (get @storage id)
         login (:identity req)]
-    (if-not (and journal (owner? login journal))
+    (if-not (and (db/journal-exists? id) (db/owner? id login))
       (not-found)
       (do
-        (unregister-journal! id)
+        (db/unregister-journal! id)
         (api-response 200 (format "'%s' deleted" id))))))
 
 (defn identity-required-wrapper
@@ -300,12 +168,11 @@
   [req authdata]
   (let [login (:username authdata)
         password (:password authdata)
-        id (get-journal-id req)
-        existing (get @storage id)]
-    (when (and existing
-               (= (:login existing) login)
-               (:valid (hashers/verify password (:password existing))))
-      login)))
+        id (get-journal-id req)]
+    (when-let [[stored-login stored-pw] (db/get-journal-auth id)]
+      (when (and (= stored-login login)
+                 (:valid (hashers/verify password stored-pw)))
+        login))))
 
 (def backend (backends/basic {:realm realm :authfn authfn}))
 
@@ -338,217 +205,28 @@
       (rmd/wrap-defaults
        (assoc rmd/api-defaults :proxy true))))
 
-(def ^:const datahike-store-id #uuid "550e8400-e29b-41d4-a716-446655440001")
-
-(defn datahike-config
-  [path]
-  {:store {:backend :file
-           :path (or path "/var/lib/datahike/journal")
-           :id datahike-store-id}
-   :schema-flexibility :read
-   :value-caps :default
-   :keep-history? false})
+(defn connect-db!
+  "Connect to Datahike persistence at target path."
+  [target]
+  (db/connect! target))
 
 (defn disconnect-db!
-  "Disconnect storage atom from database watches and releases connections."
+  "Disconnect from database and release connections."
   []
-  (remove-watch storage :to-datahike)
-  (when-let [conn @db-conn]
-    (try
-      (d/release conn)
-      (catch Exception _ nil))
-    (reset! db-conn nil)))
-
-(defn- entry->datahike-entity
-  [entry]
-  (let [base {:entry/id (:id entry)
-              :entry/timestamp (:timestamp entry)
-              :entry/description (or (:description entry) "")}
-        data-eav (reduce-kv (fn [m k v]
-                              (let [attr (keyword "entry.data" (name k))]
-                                (assoc m attr v)))
-                            {}
-                            (:data entry))]
-    (merge base data-eav)))
-
-(defn- datahike-entity->entry
-  [entity]
-  (let [base {:id (:entry/id entity)
-              :timestamp (:entry/timestamp entity)
-              :description (:entry/description entity)}
-        data-map (reduce-kv (fn [m k v]
-                              (if (= "entry.data" (namespace k))
-                                (assoc m (keyword (name k)) v)
-                                m))
-                            {}
-                            entity)]
-    (if (seq data-map)
-      (assoc base :data data-map)
-      base)))
-
-(defn- datahike-doc->journal
-  [entity]
-  (let [entries-raw (:journal/entries entity)
-        entries (cond
-                  (string? entries-raw)
-                  (try
-                    (edn/read-string entries-raw)
-                    (catch Exception _ []))
-                  (coll? entries-raw)
-                  (mapv datahike-entity->entry entries-raw)
-                  :else
-                  [])
-        tx-log-raw (:journal/tx-log entity)
-        parsed-tx-log (when tx-log-raw
-                        (try
-                          (edn/read-string tx-log-raw)
-                          (catch Exception _ [])))]
-    {:login (:journal/login entity)
-     :password (:journal/password entity)
-     :schema-version (or (:journal/schema-version entity) current-schema-version)
-     :last-tx-id (or (:journal/last-tx-id entity) 0)
-     :tx-log (or parsed-tx-log [])
-     :entries (filterv valid-entry? (or entries []))}))
-
-(defn- journal->datahike-doc
-  [id data]
-  {:journal/id id
-   :journal/login (:login data)
-   :journal/password (:password data)
-   :journal/schema-version (or (:schema-version data) current-schema-version)
-   :journal/last-tx-id (or (:last-tx-id data) 0)
-   :journal/tx-log (pr-str (or (:tx-log data) []))
-   :journal/entries (mapv entry->datahike-entity
-                          (filterv valid-entry? (or (:entries data) [])))})
-
-(defn- migrate-legacy-journals!
-  "Migrates journals storing legacy EDN string :journal/entries to
-   schema version 2 (:db.type/ref component entities)."
-  [conn]
-  (let [db @conn
-        legacy-entries (d/q '[:find ?jid ?entries-str
-                              :where [?e :journal/id ?jid]
-                              [?e :journal/entries ?entries-str]
-                              [(string? ?entries-str)]]
-                            db)]
-    (when (seq legacy-entries)
-      (tel/log! :info
-                (format "Migrating %d legacy journals to schema v2"
-                        (count legacy-entries)))
-      (doseq [[jid s] legacy-entries]
-        (let [entries (try
-                        (edn/read-string s)
-                        (catch Exception _ []))
-              clean (filterv valid-entry? entries)
-              retract-tx [[:db/retract [:journal/id jid] :journal/entries s]]]
-          (d/transact conn retract-tx)
-          (d/transact conn [{:db/ident :journal/entries
-                             :db/valueType :db.type/ref
-                             :db/cardinality :db.cardinality/many
-                             :db/isComponent true}
-                            {:db/ident :entry/id
-                             :db/valueType :db.type/string
-                             :db/cardinality :db.cardinality/one
-                             :db/unique :db.unique/identity}])
-          (d/transact conn [{:journal/id jid
-                             :journal/schema-version 2
-                             :journal/entries (mapv entry->datahike-entity clean)}]))))))
-
-(defn connect-datahike!
-  "Connect storage atom to Datahike file-based database at path."
-  ([]
-   (connect-datahike! nil))
-  ([path]
-   (disconnect-db!)
-   (let [cfg (datahike-config path)]
-     (when-not (d/database-exists? cfg)
-       (d/create-database cfg))
-     (let [conn (d/connect cfg)]
-       (reset! db-conn conn)
-       (d/transact conn [{:db/ident :journal/id
-                          :db/valueType :db.type/string
-                          :db/cardinality :db.cardinality/one
-                          :db/unique :db.unique/identity}])
-       (migrate-legacy-journals! conn)
-       (d/transact conn [{:db/ident :journal/entries
-                          :db/valueType :db.type/ref
-                          :db/cardinality :db.cardinality/many
-                          :db/isComponent true}
-                         {:db/ident :entry/id
-                          :db/valueType :db.type/string
-                          :db/cardinality :db.cardinality/one
-                          :db/unique :db.unique/identity}])
-       (let [db @conn
-             results (d/q '[:find ?e :where [?e :journal/id]] db)
-             loaded (reduce
-                     (fn [store [eid]]
-                       (let [entity (d/pull db
-                                            '[:journal/id
-                                              :journal/login
-                                              :journal/password
-                                              :journal/schema-version
-                                              :journal/last-tx-id
-                                              :journal/tx-log
-                                              {:journal/entries [*]}]
-                                            eid)
-                             jid (:journal/id entity)]
-                         (if jid
-                           (assoc store jid (datahike-doc->journal entity))
-                           store)))
-                     {}
-                     results)]
-         (reset! storage loaded)
-         (log-storage-summary!
-          (format "Loaded Datahike data (%s)" (or path "default"))
-          @storage))))
-   (add-watch
-    storage
-    :to-datahike
-    (fn [_name _atom old-val new-val]
-      (when-let [conn @db-conn]
-        (let [old-keys (keys old-val)
-              new-keys (keys new-val)
-              removed (remove (set new-keys) old-keys)
-              retractions (mapv (fn [id]
-                                  [:db.fn/retractEntity [:journal/id id]])
-                                removed)
-              upserts (mapv (fn [[id data]]
-                              (journal->datahike-doc id data))
-                            new-val)
-              tx-ops (vec (concat retractions upserts))]
-          (when (seq tx-ops)
-            (d/transact conn tx-ops))))))))
+  (db/disconnect!))
 
 (defn dump-db!
-  "Dump all journal data currently in storage atom to an EDN file or OutputStream.
+  "Dump all journal data currently in database to an EDN file or OutputStream.
    Defaults to stdout if no target is provided."
   ([]
-   (dump-db! *out*))
+   (db/dump-db! *out*))
   ([target]
-   (let [content (pr-str @storage)]
-     (if (string? target)
-       (spit target content)
-       (binding [*out* target]
-         (println content))))))
+   (db/dump-db! target)))
 
 (defn load-db!
-  "Load journal data from an EDN file, string, or InputStream into storage.
-   Replaces the contents of storage, triggering active backend watches."
+  "Load journal data from an EDN file, string, or InputStream into database."
   [source]
-  (let [raw (if (string? source)
-              (let [f (java.io.File. source)]
-                (if (.exists f)
-                  (slurp f)
-                  source))
-              (slurp source))
-        parsed (edn/read-string raw)]
-    (when (map? parsed)
-      (reset! storage parsed))))
-
-(defn connect-db!
-  "Connect storage atom to Datahike persistence at target path."
-  [target]
-  (connect-datahike! target))
+  (db/load-db! source))
 
 (defn stop-server!
   []
@@ -568,10 +246,10 @@
          (connect-db! db-path)
 
          (System/getenv "DATAHIKE_PATH")
-         (connect-datahike! (System/getenv "DATAHIKE_PATH")))
+         (connect-db! (System/getenv "DATAHIKE_PATH")))
        (reset! server (hks/run-server #'app {:port port}))
        (tel/log! :info (format "Server started on port %d" port))
-       (log-storage-summary! "Server startup storage summary" @storage))
+       (log-storage-summary! "Server startup storage summary"))
      "server already running")))
 
 (defn -main
@@ -596,17 +274,8 @@
 
 (comment
 
-  (start-server! 8080 "journal")
+  (start-server! 6000 "journal")
 
   (stop-server!)
-
-  (let [db (d/db @db-conn)
-        results (d/q '[:find ?e :where [?e :journal/id]] db)
-        loaded-1 (map (fn [[id]] (d/pull db '[:journal/id {:journal/entries [*]}] id)) results)
-        loaded-2 (map (fn [[id]] (d/pull db '[:journal/id :journal/entries] id)) results)]
-    [loaded-1 loaded-2])
-
-
-
 
   .)

@@ -2,13 +2,17 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.data.json :as json]
             [ring.mock.request :as mock]
+            [structured-data-logger.db :as db]
             [structured-data-logger.server :as sut]))
 
-(defn- reset-storage-fixture [f]
-  (reset! sut/storage {})
-  (f))
+(defn- reset-db-fixture [f]
+  (db/connect! ":memory")
+  (try
+    (f)
+    (finally
+      (db/disconnect!))))
 
-(use-fixtures :each reset-storage-fixture)
+(use-fixtures :each reset-db-fixture)
 
 (deftest ping-endpoint-test
   (testing "Ping endpoint returns 200 pong"
@@ -58,7 +62,7 @@
 
 (deftest journal-sync-endpoint-test
   (testing "Sync journal entries with structured key-value data"
-    (let [_ (sut/register-journal! "bob" "bob" "password123")
+    (let [_ (db/register-journal! "bob" "bob" "password123")
           auth-header "Basic Ym9iOnBhc3N3b3JkMTIz"
           entry-1 {:id "e-1"
                    :timestamp "2026-09-13T10:00:00Z"
@@ -85,7 +89,7 @@
 
 (deftest robust-multi-client-sync-test
   (testing "Multi-client sync via append-only transaction log"
-    (let [_ (sut/register-journal! "carol" "carol" "pass456")
+    (let [_ (db/register-journal! "carol" "carol" "pass456")
           auth "Basic Y2Fyb2w6cGFzczQ1Ng=="
           entry-1 {:id "e-1"
                    :timestamp "2026-09-14T08:00:00Z"
