@@ -79,8 +79,8 @@
   (let [db @connection
         legacy-entries (d/q '[:find ?jid ?entries-str
                               :where [?e :journal/id ?jid]
-                                     [?e :journal/entries ?entries-str]
-                                     [(string? ?entries-str)]]
+                              [?e :journal/entries ?entries-str]
+                              [(string? ?entries-str)]]
                             db)]
     (when (seq legacy-entries)
       (tel/log! :info
@@ -161,8 +161,8 @@
     (d/q '[:find [?login ?pw]
            :in $ ?jid
            :where [?e :journal/id ?jid]
-                  [?e :journal/login ?login]
-                  [?e :journal/password ?pw]]
+           [?e :journal/login ?login]
+           [?e :journal/password ?pw]]
          @c id)))
 
 (defn register-journal!
@@ -191,7 +191,7 @@
     (let [stored-login (d/q '[:find ?login .
                               :in $ ?jid
                               :where [?e :journal/id ?jid]
-                                     [?e :journal/login ?login]]
+                              [?e :journal/login ?login]]
                             @c id)]
       (= stored-login login))))
 
@@ -384,6 +384,22 @@
 
   (storage-summary)
 
+  (d/q '[:find ?jid ?date ?range
+         :where
+         [?j :journal/id ?jid]
+         [?j :journal/entries ?e]
+         [?e :entry.data/bolt-range ?range]
+         [?e :entry/timestamp ?date]
+         [?e :entry/id ?eid]]
+       @@conn)
 
 
-.)
+  (d/pull @@conn
+          '[:journal/id
+            :journal/login
+            :journal/last-tx-id
+            {:journal/entries [:entry.data/weight]}]
+          [:journal/id "john"])
+
+
+  .)
