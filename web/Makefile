@@ -18,4 +18,5 @@ release: install
 	npx shadow-cljs release frontend
 
 clean:
-	rm -rf out .shadow-cljs public/js public/index.html src/main/structured_data_logger/version.cljs
+	rm -rf out .shadow-cljs public/js public/index.html \
+		public/sw.js src/main/structured_data_logger/version.cljs

@@ -10,7 +10,6 @@
   [cljs-http "0.1.49"]
   [binaryage/devtools "1.0.7"]
   [cider/cider-nrepl "0.62.2"]
-  [binaryage/devtools "1.0.7"]
   [refactor-nrepl "3.14.0"]]
  :dev-http
  {3000

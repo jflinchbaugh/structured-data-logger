@@ -34,7 +34,7 @@
   (clean opts)
   (let [opts (uber-opts opts)]
     (println "\nCopying source...")
-    (b/copy-dir {:src-dirs ["resources" "src"] :target-dir class-dir})
+    (b/copy-dir {:src-dirs ["src"] :target-dir class-dir})
     (println (str "\nCompiling " main "..."))
     (b/compile-clj opts)
     (println "\nBuilding JAR..." (:uber-file opts))
