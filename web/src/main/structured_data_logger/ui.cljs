@@ -200,11 +200,33 @@
                    :style {:width (str pct "%")}}))
           (d/span {:class "bar-chart-val"} (str num-val))))))))
 
+(def ^:private typing-input-types
+  #{"insertText"
+    "deleteContentBackward"
+    "deleteContentForward"
+    "deleteWordBackward"
+    "deleteWordForward"
+    "insertCompositionText"})
+
+(defn- datalist-selection-event?
+  "Determines if an input event originates from selecting an option from a
+   datalist rather than typing."
+  [^js e]
+  (let [^js ne (or (.-nativeEvent e) e)
+        input-type (.-inputType ne)]
+    (cond
+      (contains? typing-input-types input-type) false
+      (or (nil? input-type)
+          (= input-type "")
+          (= input-type "insertReplacementText")) true
+      :else false)))
+
 (defnc entry-kv-row [{:keys [idx item all-entries navigator-obj on-change on-remove]}]
   (let [row-vals (if (str/blank? (:key item))
                    []
                    (core/all-known-values all-entries (:key item)))
         dl-id (str "row-vals-dl-" idx)
+        val-input-ref (hooks/use-ref nil)
         [locating? set-locating?] (hooks/use-state false)
         handle-get-gps
         (fn []
@@ -232,8 +254,17 @@
                :on-change
                (fn [e]
                  (let [v (core/format-key-input (.. e -target -value))]
-                   (on-change idx :key v)))})
-     (d/input {:value (:val item)
+                   (on-change idx :key v)))
+               :on-input
+               (fn [e]
+                 (let [v (core/format-key-input (.. e -target -value))]
+                   (when (and (datalist-selection-event? e)
+                              (not (str/blank? v))
+                              (contains? (set (core/all-known-keys all-entries)) v)
+                              (.-current val-input-ref))
+                     (.focus (.-current val-input-ref)))))})
+     (d/input {:ref val-input-ref
+               :value (:val item)
                :placeholder "Value"
                :list dl-id
                :on-change
@@ -263,6 +294,10 @@
                               navigator-obj
                               on-add]}]
   (let [blended-k (core/blended-keys all-entries)
+        val-input-ref (hooks/use-ref nil)
+        focus-val-input (fn []
+                          (when (.-current val-input-ref)
+                            (.focus (.-current val-input-ref))))
         [locating? set-locating?] (hooks/use-state false)
         handle-get-gps
         (fn []
@@ -292,8 +327,16 @@
                 :spell-check false
                 :on-change (fn [e]
                              (set-new-key-name
-                              (core/format-key-input (.. e -target -value))))})
-      (d/input {:placeholder "Value (numeric, text)"
+                              (core/format-key-input (.. e -target -value))))
+                :on-input (fn [e]
+                            (let [v (core/format-key-input (.. e -target -value))]
+                              (when (and (datalist-selection-event? e)
+                                         (not (str/blank? v))
+                                         (contains? (set (core/all-known-keys all-entries)) v)
+                                         (.-current val-input-ref))
+                                (.focus (.-current val-input-ref)))))})
+      (d/input {:ref val-input-ref
+                :placeholder "Value (numeric, text)"
                 :value new-key-val
                 :list "new-key-values-datalist"
                 :on-change (fn [e]
@@ -320,7 +363,9 @@
            (let [k-str (core/to-kebab-case (name k))]
              (d/span {:key (str "key-" k)
                       :class "chip"
-                      :on-click #(set-new-key-name k-str)}
+                      :on-click (fn []
+                                  (set-new-key-name k-str)
+                                  (focus-val-input))}
                      k-str))))))
 
      (when (not (str/blank? new-key-name))

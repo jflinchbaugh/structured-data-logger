@@ -230,6 +230,91 @@
         (finally
           ((goog.object.get view "unmount"))))))
 
+  (testing "EntryAddField focuses value field when a suggested key is clicked"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          fire-event (.-fireEvent rtl)
+          key-val (atom "")
+          view (render ($ ui/entry-add-field
+                          {:all-entries [{:id "1"
+                                          :timestamp "2026-09-01T10:00:00Z"
+                                          :description "test"
+                                          :data {:pills "aspirin"}}]
+                           :new-key-name @key-val
+                           :set-new-key-name #(reset! key-val %)
+                           :new-key-val ""
+                           :set-new-key-val (fn [_])
+                           :on-add (fn [])}))]
+      (try
+        (let [chip (.getByText screen "pills")
+              val-input (.getByPlaceholderText screen "Value (numeric, text)")]
+          (is (not= (.-activeElement js/document) val-input))
+          (.click fire-event chip)
+          (is (= "pills" @key-val))
+          (is (= (.-activeElement js/document) val-input)))
+        (finally
+          ((goog.object.get view "unmount"))))))
+
+  (testing "EntryAddField does NOT focus value field on typing a matching key"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          fire-event (.-fireEvent rtl)
+          key-val (atom "")
+          view (render ($ ui/entry-add-field
+                          {:all-entries [{:id "1"
+                                          :timestamp "2026-09-01T10:00:00Z"
+                                          :description "test"
+                                          :data {:test 1 :test-xyz 2}}]
+                           :new-key-name @key-val
+                           :set-new-key-name #(reset! key-val %)
+                           :new-key-val ""
+                           :set-new-key-val (fn [_])
+                           :on-add (fn [])}))]
+      (try
+        (let [key-input (.getByPlaceholderText screen "Key name (e.g. pills, mileage)")
+              val-input (.getByPlaceholderText screen "Value (numeric, text)")]
+          (.focus key-input)
+          (is (= (.-activeElement js/document) key-input))
+          ;; Typing 'test' with insertText InputEvent
+          (.input fire-event key-input
+                  #js {:target #js {:value "test"}
+                       :inputType "insertText"})
+          (is (not= (.-activeElement js/document) val-input))
+          (is (= (.-activeElement js/document) key-input)))
+        (finally
+          ((goog.object.get view "unmount"))))))
+
+  (testing "EntryAddField focuses value field when selecting from datalist"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          fire-event (.-fireEvent rtl)
+          key-val (atom "")
+          view (render ($ ui/entry-add-field
+                          {:all-entries [{:id "1"
+                                          :timestamp "2026-09-01T10:00:00Z"
+                                          :description "test"
+                                          :data {:test 1 :test-xyz 2}}]
+                           :new-key-name @key-val
+                           :set-new-key-name #(reset! key-val %)
+                           :new-key-val ""
+                           :set-new-key-val (fn [_])
+                           :on-add (fn [])}))]
+      (try
+        (let [key-input (.getByPlaceholderText screen "Key name (e.g. pills, mileage)")
+              val-input (.getByPlaceholderText screen "Value (numeric, text)")]
+          (.focus key-input)
+          ;; Selecting from datalist dropdown: inputType is undefined (Chrome)
+          ;; or insertReplacementText (Firefox)
+          (.input fire-event key-input
+                  #js {:target #js {:value "test"}
+                       :inputType "insertReplacementText"})
+          (is (= (.-activeElement js/document) val-input)))
+        (finally
+          ((goog.object.get view "unmount"))))))
+
   (testing "EntryAddField provides GPS button that populates coordinates"
     (let [rtl (js/require "@testing-library/react")
           render (.-render rtl)
