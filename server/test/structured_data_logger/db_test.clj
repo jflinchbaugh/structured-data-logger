@@ -1,5 +1,6 @@
 (ns structured-data-logger.db-test
   (:require [clojure.test :refer [deftest is testing]]
+            [clojure.java.io :as io]
             [datahike.api :as d]
             [structured-data-logger.db :as db]))
 
@@ -47,7 +48,7 @@
           (db/disconnect!)
           (try
             (let [f (java.io.File. tmp-dir)]
-              (run! #(clojure.java.io/delete-file % true)
+              (run! #(io/delete-file % true)
                     (reverse (file-seq f))))
             (catch Exception _ nil)))))))
 
@@ -80,7 +81,7 @@
           (run! (fn [d]
                   (try
                     (let [f (java.io.File. d)]
-                      (run! #(clojure.java.io/delete-file % true)
+                      (run! #(io/delete-file % true)
                             (reverse (file-seq f))))
                     (catch Exception _ nil)))
                 [dh-dir-1 dh-dir-2]))))))

@@ -21,7 +21,8 @@
           (.slice 0 19)))))
 
 (defn format-local-datetime
-  "Formats an ISO-8601 UTC timestamp string into local YYYY-MM-DD HH:mm:ss for display."
+  "Formats an ISO-8601 UTC timestamp string into local YYYY-MM-DD HH:mm:ss
+   for display."
   [ts-str]
   (if (str/blank? ts-str)
     ""
@@ -84,11 +85,12 @@
 (defn recent-keys
   "Returns all keys used across entries, ordered by most recent use."
   [entries]
-  (let [sorted (sort-by :timestamp #(compare %2 %1) entries)]
-    (->> sorted
-         (mapcat (fn [e] (keys (:data e))))
-         distinct
-         vec)))
+  (->> entries
+       (sort-by :timestamp)
+       reverse
+       (mapcat (fn [e] (keys (:data e))))
+       distinct
+       vec))
 
 (defn common-keys
   "Returns all keys used across entries, ordered by occurrence frequency."
@@ -111,12 +113,13 @@
 (defn recent-values
   "Returns non-blank values for key k ordered by most recent occurrence."
   [entries k]
-  (let [sorted (sort-by :timestamp #(compare %2 %1) entries)]
-    (->> sorted
-         (keep (fn [e] (get-in e [:data k])))
-         (remove (fn [v] (or (nil? v) (str/blank? (str v)))))
-         distinct
-         vec)))
+  (->> entries
+       (sort-by :timestamp)
+       reverse
+       (keep (fn [e] (get-in e [:data k])))
+       (remove (fn [v] (or (nil? v) (str/blank? (str v)))))
+       distinct
+       vec))
 
 (defn common-values
   "Returns non-blank values for key k ordered by frequency of occurrence."
@@ -265,7 +268,8 @@
     (* r c)))
 
 (defn format-coordinates
-  "Formats latitude and longitude to fixed 6 decimal places (e.g. '37.774900, -122.419400')."
+  "Formats latitude and longitude to fixed 6 decimal places
+   (e.g. '37.774900, -122.419400')."
   [lat lon]
   (try
     (let [n-lat (if (number? lat) lat (js/parseFloat (str/trim (str lat))))
@@ -304,7 +308,8 @@
   [k]
   (when k
     (let [k-str (to-kebab-case (name k))]
-      (contains? #{"location" "gps" "coordinates" "coordinate" "geo" "lat-lon" "lat-long"}
+      (contains? #{"location" "gps" "coordinates" "coordinate"
+                   "geo" "lat-lon" "lat-long"}
                  k-str))))
 
 (defn make-map-link
@@ -408,8 +413,11 @@
 (defn sort-entries-descending
   "Filters valid entries and sorts them in reverse chronological order."
   [entries]
-  (let [clean (filterv valid-entry? (or entries []))]
-    (vec (sort-by :timestamp #(compare %2 %1) clean))))
+  (->> (or entries [])
+       (filterv valid-entry?)
+       (sort-by :timestamp)
+       reverse
+       vec))
 
 (defn apply-transactions
   "Applies an ordered collection of transactions to an entries vector,

@@ -53,7 +53,6 @@
         (is (= 401 (:status resp)))))
 
     (testing "Authorized access with valid credentials"
-      ;; Basic alice@example.com:secret123 -> YWxpY2VAZXhhbXBsZS5jb206c2VjcmV0MTIz
       (let [req (-> (mock/request :get "/journal/api/document/alice")
                     (mock/header "authorization"
                                  "Basic YWxpY2VAZXhhbXBsZS5jb206c2VjcmV0MTIz"))
@@ -119,7 +118,8 @@
                                            :operations [{:client-tx-id "c1-op1"
                                                          :op "put"
                                                          :entry entry-1}]}))
-            retry-body (json/read-str (:body (sut/app retry-req)) :key-fn keyword)]
+            retry-body (json/read-str (:body (sut/app retry-req))
+                                      :key-fn keyword)]
         (is (= 1 (:last-tx-id retry-body)))
         (is (empty? (:transactions retry-body))))
 

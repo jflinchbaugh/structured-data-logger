@@ -1,6 +1,5 @@
 (ns structured-data-logger.core-test
   (:require [cljs.test :refer [deftest is testing]]
-            [tick.core :as t]
             [structured-data-logger.core :as sut]))
 
 (deftest entry-creation-test
@@ -76,13 +75,20 @@
       (is (= ["oatmeal" "salad"]
              (sut/all-known-values sample-entries :food))))
 
-    (testing "recent-values, common-values, and all-known-values exclude blank/nil values"
+    (testing (str "recent-values, common-values, and all-known-values "
+                  "exclude blank/nil values")
       (let [entries-with-blanks [{:id "1"
                                   :timestamp "2026-09-01T10:00:00Z"
-                                  :data {:food "oatmeal" :fasting nil :tag "" :notes "   "}}
+                                  :data {:food "oatmeal"
+                                         :fasting nil
+                                         :tag ""
+                                         :notes "   "}}
                                  {:id "2"
                                   :timestamp "2026-09-02T10:00:00Z"
-                                  :data {:food "" :fasting nil :tag "vip" :notes ""}}]]
+                                  :data {:food ""
+                                         :fasting nil
+                                         :tag "vip"
+                                         :notes ""}}]]
         (is (= ["oatmeal"] (sut/recent-values entries-with-blanks :food)))
         (is (= [] (sut/recent-values entries-with-blanks :fasting)))
         (is (= ["vip"] (sut/recent-values entries-with-blanks :tag)))
@@ -111,8 +117,9 @@
                     :description "A" :data {:miles 10}}
                    {:id "2" :timestamp "2026-09-10T11:00:00Z"
                     :description "B" :data {:miles 20}}]
-          res (sut/eval-sci "(reduce + (map #(get-in % [:data :miles]) entries))"
-                            {:entries entries})]
+          res (sut/eval-sci
+               "(reduce + (map #(get-in % [:data :miles]) entries))"
+               {:entries entries})]
       (is (= 30 (:result res)))
       (is (nil? (:error res))))
     (let [res (sut/eval-sci "(to-kebab-case \"Blood Pressure\")" {})]
@@ -124,12 +131,16 @@
     (let [res (sut/eval-sci "(parse-coordinates \"37.7749, -122.4194\")" {})]
       (is (= [37.7749 -122.4194] (:result res)))
       (is (nil? (:error res))))
-    (let [res (sut/eval-sci "(int (haversine-distance 37.7749 -122.4194 34.0522 -118.2437))" {})]
+    (let [res (sut/eval-sci
+               (str "(int (haversine-distance 37.7749 -122.4194 "
+                    "34.0522 -118.2437))")
+               {})]
       (is (= 559 (:result res)))
       (is (nil? (:error res))))))
 
 (deftest datetime-conversion-test
-  (testing "to-local-datetime-input formats for HTML5 datetime-local with seconds"
+  (testing (str "to-local-datetime-input formats for HTML5 datetime-local "
+                "with seconds")
     (let [formatted (sut/to-local-datetime-input "2026-09-13T12:00:00Z")]
       (is (string? formatted))
       (is (re-matches #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$" formatted))))
@@ -139,7 +150,8 @@
       (is (string? iso-str))
       (is (re-matches #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*" iso-str))))
 
-  (testing "format-local-datetime formats UTC timestamp into local display string with seconds"
+  (testing (str "format-local-datetime formats UTC timestamp into local "
+                "display string with seconds")
     (let [formatted (sut/format-local-datetime "2026-09-13T12:00:00Z")]
       (is (string? formatted))
       (is (re-matches #"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$" formatted)))
@@ -257,8 +269,11 @@
       (is (= [] (:entries res))))))
 
 (deftest sync-settings-dirty-test
-  (testing "sync-settings-dirty? detects differences between form state and saved config"
-    (let [saved {:user-id "dev-1" :username "alice@example.com" :password "secret"}]
+  (testing (str "sync-settings-dirty? detects differences between form state "
+                "and saved config")
+    (let [saved {:user-id "dev-1"
+                 :username "alice@example.com"
+                 :password "secret"}]
       (is (false? (sut/sync-settings-dirty? saved saved)))
       (is (false? (sut/sync-settings-dirty? saved {:user-id "dev-1"
                                                    :username "alice@example.com"
@@ -341,6 +356,7 @@
     (is (false? (sut/is-location-key? "mileage"))))
 
   (testing "make-map-link produces google maps url"
-    (is (= "https://www.google.com/maps/search/?api=1&query=37.774900,-122.419400"
+    (is (= (str "https://www.google.com/maps/search/?api=1&"
+                "query=37.774900,-122.419400")
            (sut/make-map-link 37.7749 -122.4194)))
     (is (nil? (sut/make-map-link nil nil)))))

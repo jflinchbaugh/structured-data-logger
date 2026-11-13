@@ -1,9 +1,9 @@
 (ns structured-data-logger.ui
-  (:require [helix.core :refer [defnc $ <>]]
+  (:require [helix.core :refer [defnc $]]
             [helix.hooks :as hooks]
             [helix.dom :as d]
             [clojure.string :as str]
-            [tick.core :as t]
+            [taoensso.telemere :as tel]
             [cljs.pprint :as pp]
             [cljs-http.client :as http]
             [cljs.core.async :refer [go <!]]
@@ -27,10 +27,11 @@
    :average-interval-sec (average diffs)})"
 
    "Recent Window (Last 7 Days)"
-   "(filter #(try
-             (let [inst (t/instant (:timestamp %))]
-               (t/> inst (t/- (t/now) (t/new-duration 7 :days))))
-             (catch :default _ false))
+   "(filter (fn [e]
+             (try
+               (let [inst (t/instant (:timestamp e))]
+                 (t/> inst (t/- (t/now) (t/new-duration 7 :days))))
+               (catch :default _ false)))
            entries)"
 
    "Bar Chart Data"
@@ -86,12 +87,13 @@
          is-secure? (when (exists? js/window) (.-isSecureContext js/window))
          proto (when (exists? js/location) (.-protocol js/location))
          host (when (exists? js/location) (.-host js/location))]
-     (js/console.log "[GPS] Initiating geolocation lookup..."
-                     #js {:hasNavigator (boolean nav-obj)
-                          :hasGeolocation (boolean geo)
-                          :isSecureContext is-secure?
-                          :protocol proto
-                          :host host})
+     (tel/log! :info
+               (str "[GPS] Initiating geolocation lookup... "
+                    {:has-navigator (boolean nav-obj)
+                     :has-geolocation (boolean geo)
+                     :is-secure-context is-secure?
+                     :protocol proto
+                     :host host}))
      (if geo
        (let [handle-success
              (fn [pos accuracy-label]
@@ -99,40 +101,55 @@
                      lat (.-latitude coords)
                      lon (.-longitude coords)
                      acc (.-accuracy coords)]
-                 (js/console.log (str "[GPS] Success via " accuracy-label ":")
-                                 #js {:lat lat :lon lon :accuracyMeters acc})
+                 (tel/log! :info
+                           (str "[GPS] Success via " accuracy-label ": "
+                                {:lat lat :lon lon :accuracy-meters acc}))
                  (if-let [formatted (core/format-coordinates lat lon)]
                    (when on-success (on-success formatted))
                    (do
-                     (js/console.warn "[GPS] Invalid coordinate values:" lat lon)
-                     (when on-error (on-error "Invalid coordinates received."))))))
+                     (tel/log! :warn
+                               (str "[GPS] Invalid coordinate values: "
+                                    lat " " lon))
+                     (when on-error
+                       (on-error "Invalid coordinates received."))))))
              try-low-accuracy
              (fn [original-err]
-               (js/console.warn "[GPS] High accuracy failed, falling back to low accuracy (Wi-Fi/network):"
-                                #js {:code (.-code original-err)
-                                     :message (.-message original-err)})
+               (tel/log! :warn
+                         (str "[GPS] High accuracy failed, falling back to "
+                              "low accuracy (Wi-Fi/network): "
+                              {:code (.-code original-err)
+                               :message (.-message original-err)}))
                (let [low-opts #js {:enableHighAccuracy false
                                    :timeout 15000
                                    :maximumAge 120000}]
                  (.getCurrentPosition
                   geo
-                  (fn [pos] (handle-success pos "low-accuracy (Wi-Fi/network)"))
+                  (fn [pos]
+                    (handle-success pos "low-accuracy (Wi-Fi/network)"))
                   (fn [err]
                     (let [code (.-code err)
-                          raw-msg (.-message err)
-                          _ (js/console.error "[GPS] Low-accuracy lookup also failed:"
-                                              #js {:code code :message raw-msg})
-                          msg (cond
-                                (= code 1) "Location permission denied."
-                                (= code 2) (str "Location unavailable: "
-                                                (if (str/blank? raw-msg)
-                                                  "Wi-Fi/network lookup failed."
-                                                  raw-msg))
-                                (= code 3) "Location request timed out."
-                                :else (or raw-msg
-                                          (.-message original-err)
-                                          "Could not retrieve location."))]
-                      (when on-error (on-error msg))))
+                          raw-msg (.-message err)]
+                      (tel/log! :error
+                                (str "[GPS] Low-accuracy lookup also failed: "
+                                     {:code code :message raw-msg}))
+                      (let [msg (cond
+                                  (= code 1)
+                                  "Location permission denied."
+
+                                  (= code 2)
+                                  (str "Location unavailable: "
+                                       (if (str/blank? raw-msg)
+                                         "Wi-Fi/network lookup failed."
+                                         raw-msg))
+
+                                  (= code 3)
+                                  "Location request timed out."
+
+                                  :else
+                                  (or raw-msg
+                                      (.-message original-err)
+                                      "Could not retrieve location."))]
+                        (when on-error (on-error msg)))))
                   low-opts)))
              high-opts #js {:enableHighAccuracy true
                             :timeout 8000
@@ -143,11 +160,13 @@
           (fn [err]
             (let [code (.-code err)
                   raw-msg (.-message err)]
-              (js/console.warn "[GPS] High-accuracy attempt error:"
-                               #js {:code code :message raw-msg})
+              (tel/log! :warn
+                        (str "[GPS] High-accuracy attempt error: "
+                             {:code code :message raw-msg}))
               (if (= code 1)
                 (do
-                  (js/console.error "[GPS] Permission denied by user or browser.")
+                  (tel/log! :error
+                            "[GPS] Permission denied by user or browser.")
                   (when on-error (on-error "Location permission denied.")))
                 (try-low-accuracy err))))
           high-opts))
@@ -155,18 +174,19 @@
                        (when (false? is-secure?)
                          (str " (Note: Insecure HTTP detected on "
                               proto "//" host
-                              ". Modern browsers disable geolocation unless on HTTPS or localhost)")))]
-         (js/console.error "[GPS] Geolocation unavailable:"
-                           #js {:navigator (boolean nav-obj)
-                                :geolocation (boolean geo)
-                                :isSecureContext is-secure?
-                                :origin (str proto "//" host)})
+                              ". Modern browsers disable geolocation unless "
+                              "on HTTPS or localhost)")))]
+         (tel/log! :error
+                   (str "[GPS] Geolocation unavailable: "
+                        {:navigator (boolean nav-obj)
+                         :geolocation (boolean geo)
+                         :is-secure-context is-secure?
+                         :origin (str proto "//" host)}))
          (when on-error (on-error diag)))))))
 
 
 (defnc format-kv-component [{:keys [k v]}]
-  (let [k-str (name k)
-        coords (when (core/is-location-key? k)
+  (let [coords (when (core/is-location-key? k)
                  (core/parse-coordinates v))]
     (if coords
       (let [[lat lon] coords
@@ -221,7 +241,8 @@
           (= input-type "insertReplacementText")) true
       :else false)))
 
-(defnc entry-kv-row [{:keys [idx item all-entries navigator-obj on-change on-remove]}]
+(defnc entry-kv-row
+  [{:keys [idx item all-entries navigator-obj on-change on-remove]}]
   (let [row-vals (if (str/blank? (:key item))
                    []
                    (core/all-known-values all-entries (:key item)))
@@ -242,7 +263,7 @@
              (set-locating? false)
              (if (exists? js/alert)
                (js/alert (str "GPS error: " err-msg))
-               (js/console.warn "GPS error:" err-msg)))))]
+               (tel/log! :warn (str "GPS error: " err-msg))))))]
     (d/div
      {:class "kv-pair"}
      (d/input {:value (:key item)
@@ -257,10 +278,13 @@
                    (on-change idx :key v)))
                :on-input
                (fn [e]
-                 (let [v (core/format-key-input (.. e -target -value))]
+                 (let [v (core/format-key-input (.. e -target -value))
+                       known? (contains?
+                               (set (core/all-known-keys all-entries))
+                               v)]
                    (when (and (datalist-selection-event? e)
                               (not (str/blank? v))
-                              (contains? (set (core/all-known-keys all-entries)) v)
+                              known?
                               (.-current val-input-ref))
                      (.focus (.-current val-input-ref)))))})
      (d/input {:ref val-input-ref
@@ -313,7 +337,7 @@
              (set-locating? false)
              (if (exists? js/alert)
                (js/alert (str "GPS error: " err-msg))
-               (js/console.warn "GPS error:" err-msg)))))]
+               (tel/log! :warn (str "GPS error: " err-msg))))))]
     (d/div
      {:class "form-group add-field-group"}
      (d/label "Add Field")
@@ -328,13 +352,17 @@
                 :on-change (fn [e]
                              (set-new-key-name
                               (core/format-key-input (.. e -target -value))))
-                :on-input (fn [e]
-                            (let [v (core/format-key-input (.. e -target -value))]
-                              (when (and (datalist-selection-event? e)
-                                         (not (str/blank? v))
-                                         (contains? (set (core/all-known-keys all-entries)) v)
-                                         (.-current val-input-ref))
-                                (.focus (.-current val-input-ref)))))})
+                :on-input
+                (fn [e]
+                  (let [v (core/format-key-input (.. e -target -value))
+                        known? (contains?
+                                (set (core/all-known-keys all-entries))
+                                v)]
+                    (when (and (datalist-selection-event? e)
+                               (not (str/blank? v))
+                               known?
+                               (.-current val-input-ref))
+                      (.focus (.-current val-input-ref)))))})
       (d/input {:ref val-input-ref
                 :placeholder "Value (numeric, text)"
                 :value new-key-val
@@ -500,7 +528,8 @@
                "Please provide a description or at least one field.")
               (let [entry (core/create-entry
                            {:id (:id initial-entry)
-                            :timestamp (core/from-local-datetime-input timestamp)
+                            :timestamp
+                            (core/from-local-datetime-input timestamp)
                             :description desc
                             :data data-map})]
                 (set-error-msg nil)
@@ -516,69 +545,68 @@
                        (get starter-scripts "Counts by Key"))
         [code set-code] (hooks/use-state saved-code)
         [eval-out set-eval-out] (hooks/use-state nil)
-        [chart-data set-chart-data] (hooks/use-state nil)]
+        [chart-data set-chart-data] (hooks/use-state nil)
+        run-code
+        (fn [src]
+          (let [res (core/eval-sci src {:entries entries})]
+            (set-eval-out res)
+            (if-let [r (:result res)]
+              (if (and (map? r) (= :bar (:chart-type r)))
+                (set-chart-data (:data r))
+                (if (and (map? r) (every? number? (vals r)))
+                  (set-chart-data r)
+                  (set-chart-data nil)))
+              (set-chart-data nil))))]
 
-    (let [run-code
-          (fn [src]
-            (let [res (core/eval-sci src {:entries entries})]
-              (set-eval-out res)
-              (if-let [r (:result res)]
-                (if (and (map? r) (= :bar (:chart-type r)))
-                  (set-chart-data (:data r))
-                  (if (and (map? r) (every? number? (vals r)))
-                    (set-chart-data r)
-                    (set-chart-data nil)))
-                (set-chart-data nil))))]
+    (hooks/use-effect
+     [entries]
+     (run-code code))
 
-      (hooks/use-effect
-       [entries]
-       (run-code code))
+    (d/div
+     {:class "card"}
+     (d/h3 {:class "card-title"} "SCI Analytics Dashboard")
+     (d/div
+      {:class "form-group"}
+      (d/label "Starter Scripts")
+      (d/select
+       {:on-change
+        (fn [e]
+          (let [v (.. e -target -value)
+                script (get starter-scripts v)]
+            (when script
+              (set-code script)
+              (ls/set-item! :dashboard-code script)
+              (run-code script))))}
+       (for [k (keys starter-scripts)]
+         (d/option {:key k :value k} k))))
 
-      (d/div
-       {:class "card"}
-       (d/h3 {:class "card-title"} "SCI Analytics Dashboard")
+     (d/div
+      {:class "form-group"}
+      (d/label "Clojure Code (SCI)")
+      (d/textarea
+       {:class "code-editor"
+        :value code
+        :rows 5
+        :on-change
+        (fn [e]
+          (let [v (.. e -target -value)]
+            (set-code v)
+            (ls/set-item! :dashboard-code v)))}))
+
+     (d/button
+      {:class "btn btn-primary"
+       :on-click #(run-code code)}
+      "Run Code")
+
+     (when chart-data
+       ($ bar-chart {:data chart-data}))
+
+     (when eval-out
        (d/div
-        {:class "form-group"}
-        (d/label "Starter Scripts")
-        (d/select
-         {:on-change
-          (fn [e]
-            (let [v (.. e -target -value)
-                  script (get starter-scripts v)]
-              (when script
-                (set-code script)
-                (ls/set-item! :dashboard-code script)
-                (run-code script))))}
-         (for [k (keys starter-scripts)]
-           (d/option {:key k :value k} k))))
-
-       (d/div
-        {:class "form-group"}
-        (d/label "Clojure Code (SCI)")
-        (d/textarea
-         {:class "code-editor"
-          :value code
-          :rows 5
-          :on-change
-          (fn [e]
-            (let [v (.. e -target -value)]
-              (set-code v)
-              (ls/set-item! :dashboard-code v)))}))
-
-       (d/button
-        {:class "btn btn-primary"
-         :on-click #(run-code code)}
-        "Run Code")
-
-       (when chart-data
-         ($ bar-chart {:data chart-data}))
-
-       (when eval-out
-         (d/div
-          {:class "eval-result"}
-          (if-let [err (:error eval-out)]
-            (d/span {:class "error-text"} (str "Error: " err))
-            (with-out-str (pp/pprint (:result eval-out))))))))))
+        {:class "eval-result"}
+        (if-let [err (:error eval-out)]
+          (d/span {:class "error-text"} (str "Error: " err))
+          (with-out-str (pp/pprint (:result eval-out)))))))))
 
 (defnc settings-view
   [{:keys [config pending-ops on-save-config on-register on-sync sync-status]}]

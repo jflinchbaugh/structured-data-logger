@@ -105,8 +105,9 @@
           login (:identity req)
           {:keys [entries last-tx-id]} (db/get-journal-download id)]
       (tel/log! :info
-                (format "Download journal '%s' by '%s' (%d entries, last-tx-id %d)"
-                        id login (count entries) (or last-tx-id 0)))
+                (format
+                 "Download journal '%s' by '%s' (%d entries, last-tx-id %d)"
+                 id login (count entries) (or last-tx-id 0)))
       (json-response 200 {:entries (or entries [])
                           :last-tx-id (or last-tx-id 0)}))))
 

@@ -1,6 +1,5 @@
 (ns structured-data-logger.ui-test
   (:require [cljs.test :refer [deftest is testing]]
-            [clojure.string :as str]
             [helix.core :refer [$]]
             ["jsdom" :refer [JSDOM]]
             [structured-data-logger.core :as core]
@@ -29,15 +28,18 @@
     (is (= "hello world" (ui/parse-val "  hello world  ")))))
 
 (deftest confirm-delete-test
-  (testing "confirm-delete? prompts using window.confirm and returns its boolean result"
+  (testing (str "confirm-delete? prompts using window.confirm and returns "
+                "its boolean result")
     (let [prompts (atom [])]
       (with-redefs [ui/confirm-dialog (fn [msg]
                                         (swap! prompts conj msg)
                                         true)]
-        (is (true? (ui/confirm-delete? {:description "Blood pressure reading"})))
+        (is (true? (ui/confirm-delete?
+                    {:description "Blood pressure reading"})))
         (is (= ["Are you sure you want to delete this entry?"] @prompts)))
       (with-redefs [ui/confirm-dialog (fn [_] false)]
-        (is (false? (ui/confirm-delete? {:description "Blood pressure reading"})))))))
+        (is (false? (ui/confirm-delete?
+                     {:description "Blood pressure reading"})))))))
 
 (deftest format-kv-test
   (testing "format-kv displays key and value with colon when value is present"
@@ -62,13 +64,13 @@
     (let [res (core/eval-sci "(t/- (t/now) (t/new-duration 7 :days))" {})]
       (is (nil? (:error res)))
       (is (some? (:result res))))
-    (let [sample [{:timestamp (core/now-iso-str)}]]
-      (let [res (core/eval-sci
-                 (str "(let [inst (t/instant (:timestamp (first entries)))]"
-                      "  (t/> inst (t/- (t/now) (t/new-duration 7 :days))))")
-                 {:entries sample})]
-        (is (nil? (:error res)))
-        (is (= true (:result res))))))
+    (let [sample [{:timestamp (core/now-iso-str)}]
+          res (core/eval-sci
+               (str "(let [inst (t/instant (:timestamp (first entries)))]"
+                    "  (t/> inst (t/- (t/now) (t/new-duration 7 :days))))")
+               {:entries sample})]
+      (is (nil? (:error res)))
+      (is (= true (:result res)))))
   (let [sample-entries [{:id "1"
                          :timestamp (core/now-iso-str)
                          :description "Breakfast"
@@ -138,7 +140,7 @@
         (.click fire-event (.getByText screen "Delete"))
         (is (= sample @deleted))
         (finally
-          ((goog.object.get view "unmount")))))))
+          ((js/goog.object.get view "unmount")))))))
 
 (deftest entries-list-view-rtl-test
   (testing "EntriesListView renders empty state and triggers on-add"
@@ -159,7 +161,7 @@
         (.click fire-event (.getByText screen "+ Add Entry"))
         (is (true? @added))
         (finally
-          ((goog.object.get view "unmount"))))))
+          ((js/goog.object.get view "unmount"))))))
 
   (testing "EntriesListView renders list of entries"
     (let [rtl (js/require "@testing-library/react")
@@ -177,7 +179,7 @@
         (is (some? (.getByText screen "Older Entry")))
         (is (some? (.getByText screen "Newer Entry")))
         (finally
-          ((goog.object.get view "unmount")))))))
+          ((js/goog.object.get view "unmount")))))))
 
 (deftest entry-form-subcomponents-test
   (testing "EntryKvRow and EntryAddField are exposed as decomposed components"
@@ -208,7 +210,7 @@
           (.click fire-event (.getByText screen ui/close-symbol))
           (is (= 0 @removed)))
         (finally
-          ((goog.object.get view "unmount"))))))
+          ((js/goog.object.get view "unmount"))))))
 
   (testing "EntryAddField renders and triggers on-add"
     (let [rtl (js/require "@testing-library/react")
@@ -228,7 +230,7 @@
         (.click fire-event (.getByText screen "+ Add"))
         (is (true? @added))
         (finally
-          ((goog.object.get view "unmount"))))))
+          ((js/goog.object.get view "unmount"))))))
 
   (testing "EntryAddField focuses value field when a suggested key is clicked"
     (let [rtl (js/require "@testing-library/react")
@@ -254,7 +256,7 @@
           (is (= "pills" @key-val))
           (is (= (.-activeElement js/document) val-input)))
         (finally
-          ((goog.object.get view "unmount"))))))
+          ((js/goog.object.get view "unmount"))))))
 
   (testing "EntryAddField does NOT focus value field on typing a matching key"
     (let [rtl (js/require "@testing-library/react")
@@ -273,7 +275,8 @@
                            :set-new-key-val (fn [_])
                            :on-add (fn [])}))]
       (try
-        (let [key-input (.getByPlaceholderText screen "Key name (e.g. pills, mileage)")
+        (let [key-input (.getByPlaceholderText
+                         screen "Key name (e.g. pills, mileage)")
               val-input (.getByPlaceholderText screen "Value (numeric, text)")]
           (.focus key-input)
           (is (= (.-activeElement js/document) key-input))
@@ -284,7 +287,7 @@
           (is (not= (.-activeElement js/document) val-input))
           (is (= (.-activeElement js/document) key-input)))
         (finally
-          ((goog.object.get view "unmount"))))))
+          ((js/goog.object.get view "unmount"))))))
 
   (testing "EntryAddField focuses value field when selecting from datalist"
     (let [rtl (js/require "@testing-library/react")
@@ -303,7 +306,8 @@
                            :set-new-key-val (fn [_])
                            :on-add (fn [])}))]
       (try
-        (let [key-input (.getByPlaceholderText screen "Key name (e.g. pills, mileage)")
+        (let [key-input (.getByPlaceholderText
+                         screen "Key name (e.g. pills, mileage)")
               val-input (.getByPlaceholderText screen "Value (numeric, text)")]
           (.focus key-input)
           ;; Selecting from datalist dropdown: inputType is undefined (Chrome)
@@ -313,7 +317,7 @@
                        :inputType "insertReplacementText"})
           (is (= (.-activeElement js/document) val-input)))
         (finally
-          ((goog.object.get view "unmount"))))))
+          ((js/goog.object.get view "unmount"))))))
 
   (testing "EntryAddField provides GPS button that populates coordinates"
     (let [rtl (js/require "@testing-library/react")
@@ -325,7 +329,9 @@
           mock-nav #js {:geolocation
                         #js {:getCurrentPosition
                              (fn [cb _]
-                               (cb #js {:coords #js {:latitude 37.7749 :longitude -122.4194}}))}}
+                               (cb #js {:coords
+                                        #js {:latitude 37.7749
+                                             :longitude -122.4194}}))}}
           view (render ($ ui/entry-add-field
                           {:all-entries []
                            :new-key-name @new-k
@@ -341,9 +347,10 @@
           (is (= "location" @new-k))
           (is (= "37.774900, -122.419400" @new-v)))
         (finally
-          ((goog.object.get view "unmount"))))))
+          ((js/goog.object.get view "unmount"))))))
 
-  (testing "get-browser-geolocation falls back to low-accuracy wifi/network when high accuracy fails"
+  (testing (str "get-browser-geolocation falls back to low-accuracy "
+                "wifi/network when high accuracy fails")
     (let [calls (atom [])
           mock-nav #js {:geolocation
                         #js {:getCurrentPosition
@@ -351,8 +358,12 @@
                                (let [high? (.-enableHighAccuracy opts)]
                                  (swap! calls conj high?)
                                  (if high?
-                                   (err-cb #js {:code 2 :message "Position unavailable"})
-                                   (cb #js {:coords #js {:latitude 37.7749 :longitude -122.4194}}))))}}
+                                   (err-cb
+                                    #js {:code 2
+                                         :message "Position unavailable"})
+                                   (cb #js {:coords
+                                            #js {:latitude 37.7749
+                                                 :longitude -122.4194}}))))}}
           result (atom nil)]
       (ui/get-browser-geolocation mock-nav #(reset! result %) (fn [_]))
       (is (= [true false] @calls))
@@ -369,10 +380,11 @@
       (try
         (let [link (.getByRole screen "link")]
           (is (some? link))
-          (is (= "https://www.google.com/maps/search/?api=1&query=37.774900,-122.419400"
+          (is (= (str "https://www.google.com/maps/search/?api=1&"
+                      "query=37.774900,-122.419400")
                  (.-href link))))
         (finally
-          ((goog.object.get view "unmount"))))))
+          ((js/goog.object.get view "unmount"))))))
 
   (testing "format-kv-component renders regular text for non-location keys"
     (let [rtl (js/require "@testing-library/react")
@@ -383,4 +395,4 @@
       (try
         (is (some? (.getByText screen "food: oatmeal")))
         (finally
-          ((goog.object.get view "unmount")))))))
+          ((js/goog.object.get view "unmount")))))))

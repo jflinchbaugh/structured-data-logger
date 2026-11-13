@@ -2,6 +2,7 @@
   (:require [datahike.api :as d]
             [buddy.hashers :as hashers]
             [clojure.edn :as edn]
+            [clojure.string :as str]
             [taoensso.telemere :as tel]
             [tick.core :as t]))
 
@@ -19,7 +20,7 @@
      :value-caps :default
      :keep-history? false}
     {:store {:backend :file
-             :path (if (clojure.string/blank? path)
+             :path (if (str/blank? path)
                      "/var/lib/datahike/journal"
                      path)
              :id datahike-store-id}
@@ -33,9 +34,9 @@
   (boolean
    (and (map? e)
         (string? (:id e))
-        (not (clojure.string/blank? (:id e)))
+        (not (str/blank? (:id e)))
         (string? (:timestamp e))
-        (not (clojure.string/blank? (:timestamp e))))))
+        (not (str/blank? (:timestamp e))))))
 
 (defn valid-op?
   [op]
@@ -44,7 +45,7 @@
          (case t
            "put" (valid-entry? (:entry op))
            "delete" (let [tid (or (:id op) (get-in op [:entry :id]))]
-                      (and (string? tid) (not (clojure.string/blank? tid))))
+                      (and (string? tid) (not (str/blank? tid))))
            false))))
 
 (defn entry->datahike-entity
@@ -197,10 +198,12 @@
                          (catch Exception _ [])))]
           {:login (:journal/login entity)
            :password (:journal/password entity)
-           :schema-version (or (:journal/schema-version entity) current-schema-version)
+           :schema-version (or (:journal/schema-version entity)
+                               current-schema-version)
            :last-tx-id (or (:journal/last-tx-id entity) 0)
            :tx-log (or tx-log [])
-           :entries (vec (sort-by :timestamp (filterv valid-entry? entries)))})))))
+           :entries (vec (sort-by :timestamp
+                                  (filterv valid-entry? entries)))})))))
 
 (defn- apply-op-to-entries
   [entries op]
@@ -209,7 +212,7 @@
     (case op-type
       "delete"
       (let [target-id (or (:id op) (get-in op [:entry :id]))]
-        (if (and (string? target-id) (not (clojure.string/blank? target-id)))
+        (if (and (string? target-id) (not (str/blank? target-id)))
           (vec (remove (fn [e] (= (:id e) target-id)) clean-entries))
           clean-entries))
 
@@ -348,8 +351,12 @@
 
   (let [db (d/db @conn)
         results (d/q '[:find ?e :where [?e :journal/id]] db)
-        loaded-1 (map (fn [[id]] (d/pull db '[:journal/id {:journal/entries [*]}] id)) results)
-        loaded-2 (map (fn [[id]] (d/pull db '[:journal/id :journal/entries] id)) results)]
+        loaded-1 (map (fn [[id]]
+                        (d/pull db '[:journal/id {:journal/entries [*]}] id))
+                      results)
+        loaded-2 (map (fn [[id]]
+                        (d/pull db '[:journal/id :journal/entries] id))
+                      results)]
     [loaded-1 loaded-2])
 
   (storage-summary)
