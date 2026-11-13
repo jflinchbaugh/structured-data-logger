@@ -17,6 +17,8 @@
                             :description "Medication"
                             :data {:pills 2 :med "aspirin"}}]
           (db/record-transactions! "user-dh" [{:op "put" :entry sample-entry}])
+          (is (= {:journals 1 :entries 1 :transactions 1}
+                 (db/storage-summary)))
           ;; Disconnect and reconnect to verify persistence and structured EAV
           (db/disconnect!)
           (db/connect! tmp-dir)
@@ -41,56 +43,6 @@
         (db/disconnect!)
         (db/connect! tmp-dir)
         (is (not (db/journal-exists? "user-dh")))
-        (finally
-          (db/disconnect!)
-          (try
-            (let [f (java.io.File. tmp-dir)]
-              (run! #(clojure.java.io/delete-file % true)
-                    (reverse (file-seq f))))
-            (catch Exception _ nil)))))))
-
-(deftest legacy-migration-test
-  (testing "automatically migrate legacy schema v1 journals with string entries to v2"
-    (let [tmp-dir (str "/tmp/datahike-mig-" (java.util.UUID/randomUUID))]
-      (try
-        ;; Simulate legacy schema v1 with entries serialized as EDN string
-        (let [cfg (db/datahike-config tmp-dir)]
-          (d/create-database cfg)
-          (let [c (d/connect cfg)]
-            (d/transact c [{:db/ident :journal/id
-                            :db/valueType :db.type/string
-                            :db/cardinality :db.cardinality/one
-                            :db/unique :db.unique/identity}])
-            (d/transact c [{:journal/id "legacy-user"
-                            :journal/login "legacy@example.com"
-                            :journal/password "hashed123"
-                            :journal/schema-version 1
-                            :journal/last-tx-id 5
-                            :journal/entries (pr-str [{:id "e-leg-1"
-                                                       :timestamp "2026-10-31T09:00:00Z"
-                                                       :description "Legacy run"
-                                                       :data {:distance 5.5
-                                                              :shoes "Saucony"}}])}])
-            (d/release c)))
-        ;; Connect database: should trigger automatic migration
-        (db/connect! tmp-dir)
-        (let [j (db/get-journal "legacy-user")]
-          (is (= 2 (:schema-version j)))
-          (is (= 1 (count (:entries j))))
-          (is (= "Legacy run" (-> j :entries first :description)))
-          (is (= 5.5 (-> j :entries first :data :distance)))
-          (is (= "Saucony" (-> j :entries first :data :shoes))))
-        ;; Verify Datahike directly supports Datalog query on migrated entity
-        (let [conn @db/conn
-              query-result (d/q '[:find ?desc ?dist ?shoes
-                                  :where
-                                  [?j :journal/id "legacy-user"]
-                                  [?j :journal/entries ?e]
-                                  [?e :entry/description ?desc]
-                                  [?e :entry.data/distance ?dist]
-                                  [?e :entry.data/shoes ?shoes]]
-                                @conn)]
-          (is (= #{["Legacy run" 5.5 "Saucony"]} query-result)))
         (finally
           (db/disconnect!)
           (try

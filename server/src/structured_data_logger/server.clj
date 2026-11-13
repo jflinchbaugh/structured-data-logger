@@ -110,21 +110,6 @@
       (json-response 200 {:entries (or entries [])
                           :last-tx-id (or last-tx-id 0)}))))
 
-(defn- normalize-ops
-  [payload]
-  (cond
-    (contains? payload :operations)
-    (or (:operations payload) [])
-
-    (contains? payload :changes)
-    (mapv (fn [c]
-            (if (:deleted? c)
-              {:op "delete" :id (:id c)}
-              {:op "put" :entry c}))
-          (:changes payload))
-
-    :else []))
-
 (defn sync-handler
   [req]
   (if-not (:identity req)
@@ -132,7 +117,7 @@
     (let [id (get-journal-id req)
           payload (parse-json-body req)
           since-tx-id (or (:since-tx-id payload) 0)
-          ops (normalize-ops payload)
+          ops (or (:operations payload) [])
           result (db/record-transactions! id ops)
           all-txs (or (:tx-log result) [])
           filtered-txs (filterv (fn [tx]
@@ -195,10 +180,7 @@
                        identity-required-wrapper]
                       :post sync-handler}]]]
       (ring/router)
-      (ring/ring-handler
-       (ring/routes
-        (ring/create-resource-handler {:path base-url})
-        not-found))
+      (ring/ring-handler not-found)
       (rmc/wrap-cors
        :access-control-allow-origin [#".*"]
        :access-control-allow-methods [:get :put :post :delete])

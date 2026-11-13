@@ -443,36 +443,12 @@
                   (or last-tx-id 0))
    :operations (or pending-ops [])})
 
-(defn clean-server-url
-  "Trims whitespace and strips trailing slashes from server URL."
-  [u]
-  (if (str/blank? u)
-    ""
-    (str/replace (str/trim (str u)) #"/+$" "")))
-
 (def email-regex #"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 (defn valid-email?
   "Checks whether string s is a valid email address."
   [s]
   (boolean (and (string? s) (re-matches email-regex (str/trim s)))))
-
-(defn pwa-cache-urls
-  "Returns list of asset URLs to pre-cache for offline PWA operation.
-   Supports an optional context-path (defaults to \"/\")."
-  ([build-ts]
-   (pwa-cache-urls build-ts "/"))
-  ([build-ts context-path]
-   (let [base (let [cp (if (str/blank? (str context-path)) "/" (str context-path))]
-                (if (str/ends-with? cp "/") cp (str cp "/")))
-         ts-suffix (if (str/blank? (str build-ts)) "" (str "?ts=" build-ts))]
-     [base
-      (str base "index.html")
-      (str base "style.css" ts-suffix)
-      (str base "js/main.js" ts-suffix)
-      (str base "manifest.json")
-      (str base "icon-192.png")
-      (str base "icon-512.png")])))
 
 (defn sync-settings-dirty?
   "Checks whether candidate sync settings differ from saved settings."
@@ -482,13 +458,6 @@
                      :username (or (:username m) "")
                      :password (or (:password m) "")})]
     (not= (normalize saved) (normalize current))))
-
-(defn dev-proxy-path?
-  "Returns true if the given path should be proxied to the backend."
-  [path]
-  (let [p (str path)]
-    (boolean (or (= p "/journal/api")
-                 (str/starts-with? p "/journal/api/")))))
 
 (defn resolve-base-path
   "Resolves the application context base path from a URL pathname.

@@ -223,18 +223,6 @@
           res (sut/sort-entries-descending [e1 nil e-invalid e2])]
       (is (= ["2" "1"] (mapv :id res))))))
 
-(deftest server-url-cleaning-test
-  (testing "clean-server-url normalizes trailing slashes and blank strings"
-    (is (= "http://localhost:6000"
-           (sut/clean-server-url "http://localhost:6000/")))
-    (is (= "http://localhost:6000"
-           (sut/clean-server-url "http://localhost:6000///")))
-    (is (= "http://localhost:6000"
-           (sut/clean-server-url "  http://localhost:6000  ")))
-    (is (= "" (sut/clean-server-url "")))
-    (is (= "" (sut/clean-server-url nil)))
-    (is (= "" (sut/clean-server-url "   ")))))
-
 (deftest email-validation-test
   (testing "valid-email? identifies valid and invalid email addresses"
     (is (true? (sut/valid-email? "user@example.com")))
@@ -268,29 +256,6 @@
                 :received-txs [{:op "put" :entry nil}]})]
       (is (= [] (:entries res))))))
 
-(deftest pwa-offline-assets-test
-  (testing "pwa-cache-urls generates essential asset paths for offline caching with context path"
-    (let [dev-urls (sut/pwa-cache-urls "12345" "/")
-          prod-urls (sut/pwa-cache-urls "12345" "/journal/")]
-      (is (vector? dev-urls))
-      (is (some #{"/"} dev-urls))
-      (is (some #{"/index.html"} dev-urls))
-      (is (some #{"/style.css?ts=12345"} dev-urls))
-      (is (some #{"/js/main.js?ts=12345"} dev-urls))
-      (is (some #{"/manifest.json"} dev-urls))
-      (is (some #{"/icon-192.png"} dev-urls))
-      (is (some #{"/icon-512.png"} dev-urls))
-
-      (is (vector? prod-urls))
-      (is (some #{"/journal/"} prod-urls))
-      (is (some #{"/journal/index.html"} prod-urls))
-      (is (some #{"/journal/style.css?ts=12345"} prod-urls))
-      (is (some #{"/journal/js/main.js?ts=12345"} prod-urls))
-      (is (some #{"/journal/manifest.json"} prod-urls))
-      (is (some #{"/journal/icon-192.png"} prod-urls))
-      (is (some #{"/journal/icon-512.png"} prod-urls)))))
-
-
 (deftest sync-settings-dirty-test
   (testing "sync-settings-dirty? detects differences between form state and saved config"
     (let [saved {:user-id "dev-1" :username "alice@example.com" :password "secret"}]
@@ -310,18 +275,6 @@
       (is (false? (sut/sync-settings-dirty? nil {:user-id ""
                                                  :username ""
                                                  :password ""}))))))
-
-(deftest dev-proxy-predicate-test
-  (testing "dev-proxy-path? matches /journal/api and subpaths only"
-    (is (true? (sut/dev-proxy-path? "/journal/api")))
-    (is (true? (sut/dev-proxy-path? "/journal/api/")))
-    (is (true? (sut/dev-proxy-path? "/journal/api/ping")))
-    (is (true? (sut/dev-proxy-path? "/journal/api/sync/device-1")))
-    (is (false? (sut/dev-proxy-path? "/")))
-    (is (false? (sut/dev-proxy-path? "/index.html")))
-    (is (false? (sut/dev-proxy-path? "/journal")))
-    (is (false? (sut/dev-proxy-path? "/journal/")))
-    (is (false? (sut/dev-proxy-path? "/other/api")))))
 
 (deftest context-path-test
   (testing "resolve-base-path handles prod (/journal/) and local dev (/)"

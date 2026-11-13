@@ -13,9 +13,3 @@
   (try
     (.setItem js/localStorage (str k) (pr-str v))
     (catch :default _ nil)))
-
-(defn remove-item!
-  [k]
-  (try
-    (.removeItem js/localStorage (str k))
-    (catch :default _ nil)))

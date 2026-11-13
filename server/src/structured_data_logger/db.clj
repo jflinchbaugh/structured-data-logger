@@ -74,51 +74,14 @@
       (assoc base :data data-map)
       base)))
 
-(defn- migrate-legacy-journals!
-  "Migrates journals storing legacy EDN string :journal/entries to
-   schema version 2 (:db.type/ref component entities)."
-  [connection]
-  (let [db @connection
-        legacy-entries (d/q '[:find ?jid ?entries-str
-                              :where [?e :journal/id ?jid]
-                              [?e :journal/entries ?entries-str]
-                              [(string? ?entries-str)]]
-                            db)]
-    (when (seq legacy-entries)
-      (tel/log! :info
-                (format "Migrating %d legacy journals to schema v2"
-                        (count legacy-entries)))
-      (doseq [[jid s] legacy-entries]
-        (let [entries (try
-                        (edn/read-string s)
-                        (catch Exception _ []))
-              clean (filterv valid-entry? entries)
-              retract-tx [[:db/retract [:journal/id jid] :journal/entries s]]]
-          (d/transact connection retract-tx)
-          (d/transact connection [{:db/ident :journal/entries
-                                   :db/valueType :db.type/ref
-                                   :db/cardinality :db.cardinality/many
-                                   :db/isComponent true}
-                                  {:db/ident :entry/id
-                                   :db/valueType :db.type/string
-                                   :db/cardinality :db.cardinality/one
-                                   :db/unique :db.unique/identity}])
-          (d/transact connection
-                      [{:journal/id jid
-                        :journal/schema-version current-schema-version
-                        :journal/entries (mapv entry->datahike-entity
-                                               clean)}]))))))
-
 (defn init-schema!
   [connection]
   (d/transact connection
               [{:db/ident :journal/id
                 :db/valueType :db.type/string
                 :db/cardinality :db.cardinality/one
-                :db/unique :db.unique/identity}])
-  (migrate-legacy-journals! connection)
-  (d/transact connection
-              [{:db/ident :journal/entries
+                :db/unique :db.unique/identity}
+               {:db/ident :journal/entries
                 :db/valueType :db.type/ref
                 :db/cardinality :db.cardinality/many
                 :db/isComponent true}
@@ -319,15 +282,20 @@
 
 (defn storage-summary
   "Returns a summary map of current database state: journal count,
-   entry count, and last tx IDs."
+   entry count, and transaction count."
   []
   (if-let [c @conn]
     (let [db @c
           j-count (count (d/q '[:find ?j :where [?j :journal/id]] db))
-          entries-count (count (d/q '[:find ?e :where [?e :entry/id]] db))]
+          entries-count (count (d/q '[:find ?e :where [?e :entry/id]] db))
+          tx-counts (d/q '[:find ?j ?tx
+                           :where [?j :journal/id]
+                           [?j :journal/last-tx-id ?tx]]
+                         db)
+          tx-total (reduce + 0 (map second tx-counts))]
       {:journals j-count
        :entries entries-count
-       :transactions 0})
+       :transactions tx-total})
     {:journals 0 :entries 0 :transactions 0}))
 
 (defn all-journals

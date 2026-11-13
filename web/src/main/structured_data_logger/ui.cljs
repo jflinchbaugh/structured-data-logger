@@ -745,7 +745,6 @@
                              (string? (:client-tx-id op))
                              (not (str/blank? (:client-tx-id op)))))
                       (or (ls/get-item :pending-ops)
-                          (ls/get-item :pending-changes)
                           []))))
         [last-tx-id set-last-tx-id]
         (hooks/use-state (or (ls/get-item :last-tx-id) 0))

@@ -77,7 +77,9 @@
                           :vehicle "truck"}}
           sync-req (-> (mock/request :post "/journal/api/sync/bob")
                        (mock/header "authorization" auth-header)
-                       (mock/json-body {:changes [entry-1 entry-2]}))
+                       (mock/json-body
+                        {:operations [{:op "put" :entry entry-1}
+                                      {:op "put" :entry entry-2}]}))
           sync-resp (sut/app sync-req)
           body (json/read-str (:body sync-resp) :key-fn keyword)]
       (is (= 200 (:status sync-resp)))
