@@ -745,21 +745,14 @@
 
 
 (defnc entries-list-view
-  [{:keys [entries on-add on-edit on-delete]}]
+  [{:keys [entries on-edit on-delete]}]
   (let [clean-entries (core/sort-entries-descending entries)]
     (d/div
      {:id "entries" :class "card"}
-     (d/div {:class "card-header-row"}
-            (d/h3 {:class "card-title card-title-inline"}
-                  (str "Entries (" (count clean-entries) ")"))
-            (d/a {:class "btn btn-primary btn-small"
-                  :href "#new"
-                  :on-click #(when on-add (on-add))}
-                 "+ Add Entry"))
      (if (empty? clean-entries)
        (d/p {:class "entries-empty-notice"}
             (str "No journal entries recorded yet. "
-                 "Click '+ Add Entry' to create one."))
+                 "Click '+ New' to create one."))
        (for [entry clean-entries]
          ($ entry-list-item
             {:key (:id entry)
@@ -997,7 +990,7 @@
                           (when (= active-tab :entries) " active"))
               :href "#entries"
               :on-click #(navigate-to! :entries)}
-             "Entries")
+             (str "Entries (" (count entries) ")"))
         (d/a {:class (str "tab-btn"
                           (when (= active-tab :new) " active"))
               :href "#new"
@@ -1020,7 +1013,6 @@
          :entries
          ($ entries-list-view
             {:entries entries
-             :on-add #(navigate-to! :new)
              :on-edit (fn [entry]
                         (set-editing-entry entry)
                         (navigate-to! :new))

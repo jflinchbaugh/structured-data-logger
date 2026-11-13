@@ -140,27 +140,22 @@
           ((js/goog.object.get view "unmount")))))))
 
 (deftest entries-list-view-rtl-test
-  (testing "EntriesListView renders empty state and triggers on-add"
+  (testing "EntriesListView renders empty state without header or Add button"
     (let [rtl (js/require "@testing-library/react")
           render (.-render rtl)
           screen (.-screen rtl)
-          fire-event (.-fireEvent rtl)
-          added (atom false)
-          view (render ($ ui/entries-list-view
-                          {:entries []
-                           :on-add #(reset! added true)}))]
+          view (render ($ ui/entries-list-view {:entries []}))]
       (try
-        (is (some? (.getByText screen "Entries (0)")))
+        (is (nil? (.queryByText screen "Entries (0)")))
         (is (some? (.getByText
                     screen
                     (str "No journal entries recorded yet. "
-                         "Click '+ Add Entry' to create one."))))
-        (.click fire-event (.getByText screen "+ Add Entry"))
-        (is (true? @added))
+                         "Click '+ New' to create one."))))
+        (is (nil? (.queryByText screen "+ Add Entry")))
         (finally
           ((js/goog.object.get view "unmount"))))))
 
-  (testing "EntriesListView renders list of entries"
+  (testing "EntriesListView renders list of entries without header"
     (let [rtl (js/require "@testing-library/react")
           render (.-render rtl)
           screen (.-screen rtl)
@@ -172,9 +167,19 @@
                     :description "Newer Entry"}]
           view (render ($ ui/entries-list-view {:entries entries}))]
       (try
-        (is (some? (.getByText screen "Entries (2)")))
+        (is (nil? (.queryByText screen "Entries (2)")))
         (is (some? (.getByText screen "Older Entry")))
         (is (some? (.getByText screen "Newer Entry")))
+        (finally
+          ((js/goog.object.get view "unmount"))))))
+
+  (testing "AppRoot displays entries count in the Entries nav tab button"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          view (render ($ ui/app-root))]
+      (try
+        (is (some? (.getByText screen "Entries (0)")))
         (finally
           ((js/goog.object.get view "unmount")))))))
 
