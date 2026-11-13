@@ -2,7 +2,8 @@ FROM debian:unstable
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y \
     && apt-get upgrade -y \
-    && apt-get install -y openjdk-25-jre-headless time
+    && apt-get install -y openjdk-25-jre-headless time \
+    && apt-get autoremove -y
 
 RUN mkdir -p /app
 

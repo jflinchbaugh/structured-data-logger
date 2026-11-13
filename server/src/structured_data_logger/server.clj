@@ -242,11 +242,14 @@
    (if (nil? @server)
      (do
        (cond
-         db-path
+         (not (str/blank? db-path))
          (connect-db! db-path)
 
-         (System/getenv "DATAHIKE_PATH")
-         (connect-db! (System/getenv "DATAHIKE_PATH")))
+         (not (str/blank? (System/getenv "DATAHIKE_PATH")))
+         (connect-db! (System/getenv "DATAHIKE_PATH"))
+
+         :else
+         (connect-db! ":memory"))
        (reset! server (hks/run-server #'app {:port port}))
        (tel/log! :info (format "Server started on port %d" port))
        (log-storage-summary! "Server startup storage summary"))
@@ -256,14 +259,18 @@
   [& [cmd-or-port arg1]]
   (case cmd-or-port
     "dump"
-    (let [target (or arg1 (System/getenv "DATAHIKE_PATH") "/var/lib/datahike")]
+    (let [target (or arg1
+                     (System/getenv "DATAHIKE_PATH")
+                     "/var/lib/datahike/journal")]
       (connect-db! target)
       (dump-db!)
       (disconnect-db!)
       (System/exit 0))
 
     "load"
-    (let [target (or arg1 (System/getenv "DATAHIKE_PATH") "/var/lib/datahike")]
+    (let [target (or arg1
+                     (System/getenv "DATAHIKE_PATH")
+                     "/var/lib/datahike/journal")]
       (connect-db! target)
       (load-db! *in*)
       (disconnect-db!)

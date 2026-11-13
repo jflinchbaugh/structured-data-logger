@@ -71,7 +71,7 @@ curl -s http://localhost:6000/journal/api/ping
 ```bash
 curl -s -X POST \
   -H 'Content-Type: application/json' \
-  -d '{"id":"alice","login":"alice","password":"secret123"}' \
+  -d '{"id":"alice","login":"alice@example.com","password":"secret123"}' \
   http://localhost:6000/journal/api/register
 ```
 
@@ -80,19 +80,23 @@ curl -s -X POST \
 Send a batch of journal entries or deletions:
 
 ```bash
-curl -s -u alice:secret123 -X POST \
+curl -s -u alice@example.com:secret123 -X POST \
   -H 'Content-Type: application/json' \
-  -d '{"changes":[{"id":"entry-1",
-                   "timestamp":"2026-09-14T20:00:00Z",
-                   "description":"Jogged 3 miles",
-                   "data":{"mileage":3.0,"shoes":"running"}}]}' \
+  -d '{"since-tx-id":0,
+       "operations":[{"client-tx-id":"tx-1",
+                      "op":"put",
+                      "entry":{"id":"entry-1",
+                               "timestamp":"2026-09-14T20:00:00Z",
+                               "description":"Jogged 3 miles",
+                               "data":{"mileage":3.0,
+                                       "shoes":"running"}}}]}' \
   http://localhost:6000/journal/api/sync/alice
 ```
 
 ### 4. Fetch Synced Entries
 
 ```bash
-curl -s -u alice:secret123 \
+curl -s -u alice@example.com:secret123 \
   http://localhost:6000/journal/api/document/alice
 ```
 
@@ -108,58 +112,7 @@ make container
 
 This tags the image as `localhost/structured-data-logger-server:latest`.
 
-### 2. Run Interactively in Foreground (Press Ctrl+C to Stop)
-
-To run the container interactively in the foreground attached to your
-terminal with live log output:
-
-```bash
-make run-container
-```
-
-Or run directly with `podman`:
-
-```bash
-podman run --rm -it -p 6000:6000 -e port=6000 \
-  localhost/structured-data-logger-server:latest
-```
-
-Press `Ctrl+C` at any time to cleanly stop and remove the container.
-
-To run interactively with Datahike mounted storage:
-
-```bash
-podman run --rm -it -p 6000:6000 -e port=6000 \
-  -e DATAHIKE_PATH=/var/lib/datahike \
-  -v structured-data-logger-datahike-data:/var/lib/datahike \
-  localhost/structured-data-logger-server:latest
-```
-
-### 3. Run in the Background (Detached)
-
-Alternatively, to run detached in the background:
-
-```bash
-podman run -d --name structured-data-logger-server \
-  -p 6000:6000 \
-  -e port=6000 \
-  localhost/structured-data-logger-server:latest
-```
-
-View logs:
-
-```bash
-podman logs -f structured-data-logger-server
-```
-
-Stop and remove:
-
-```bash
-podman stop structured-data-logger-server
-podman rm structured-data-logger-server
-```
-
-### 4. Run Server Pod via Kubernetes YAML
+### 2. Run Server Pod via Kubernetes YAML
 
 Run the server with Datahike storage in a foreground pod:
 
@@ -185,33 +138,41 @@ make stop-server
 podman kube down structured-data-logger-server.yaml
 ```
 
-### 5. Backup and Restore (Dump & Load)
+### 3. Backup and Restore (Dump & Load)
 
-The server jar includes built-in `dump` and `load` commands, and the container image provides `/usr/local/bin/dump-db` and `/usr/local/bin/load-db` for streaming backup/restore to/from EDN format.
+The server jar includes built-in `dump` and `load` commands, and the
+container image provides `/usr/local/bin/dump-db` and
+`/usr/local/bin/load-db` for streaming backup/restore to/from EDN format.
 
 #### Dump Database to EDN
 
 ```bash
 # Locally:
-java -jar target/structured-data-logger-server-standalone.jar dump /var/lib/datahike > backup.edn
+java -jar target/structured-data-logger-server-standalone.jar \
+  dump /var/lib/datahike/journal > backup.edn
 
 # Via Podman container:
-podman run --rm -v structured-data-logger-datahike-data:/var/lib/datahike \
-  localhost/structured-data-logger-server:latest dump-db /var/lib/datahike > backup.edn
+podman run --rm \
+  -v structured-data-logger-datahike-data:/var/lib/datahike \
+  localhost/structured-data-logger-server:latest \
+  dump-db /var/lib/datahike/journal > backup.edn
 ```
 
 #### Load / Restore Database from EDN
 
 ```bash
 # Locally:
-java -jar target/structured-data-logger-server-standalone.jar load /var/lib/datahike < backup.edn
+java -jar target/structured-data-logger-server-standalone.jar \
+  load /var/lib/datahike/journal < backup.edn
 
 # Via Podman container:
-podman run --rm -i -v structured-data-logger-datahike-data:/var/lib/datahike \
-  localhost/structured-data-logger-server:latest load-db /var/lib/datahike < backup.edn
+podman run --rm -i \
+  -v structured-data-logger-datahike-data:/var/lib/datahike \
+  localhost/structured-data-logger-server:latest \
+  load-db /var/lib/datahike/journal < backup.edn
 ```
 
-### 6. Install as a Systemd User Quadlet
+### 4. Install as a Systemd User Quadlet
 
 For automated background startup on boot:
 

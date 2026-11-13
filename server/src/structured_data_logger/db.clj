@@ -19,7 +19,9 @@
      :value-caps :default
      :keep-history? false}
     {:store {:backend :file
-             :path (or path "/var/lib/datahike/journal")
+             :path (if (clojure.string/blank? path)
+                     "/var/lib/datahike/journal"
+                     path)
              :id datahike-store-id}
      :schema-flexibility :read
      :value-caps :default

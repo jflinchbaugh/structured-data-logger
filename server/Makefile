@@ -20,9 +20,6 @@ clean:
 	clj -T:build clean
 	rm -f target/.uberjar-built
 
-run-container: container
-	podman run --rm -it -p 6000:6000 -e port=6000 structured-data-logger-server:latest
-
 run-server:
 	podman kube play --wait structured-data-logger-server.yaml
 

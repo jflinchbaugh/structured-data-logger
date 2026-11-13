@@ -70,13 +70,7 @@ Build and run the containerized backend:
 # 1. Build the container image
 cd server && make container
 
-# 2. Run interactively in the foreground (press Ctrl+C to stop):
-make run-container
-# or:
-#   podman run --rm -it -p 6000:6000 -e port=6000 \
-#     localhost/structured-data-logger-server:latest
-
-# Or run the server pod with Datahike persistence:
+# 2. Run the server pod in the foreground (or `make start-server`):
 make run-server
 # (Stop with: make stop-server)
 ```

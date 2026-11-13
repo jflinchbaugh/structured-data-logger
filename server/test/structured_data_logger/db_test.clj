@@ -132,3 +132,13 @@
                             (reverse (file-seq f))))
                     (catch Exception _ nil)))
                 [dh-dir-1 dh-dir-2]))))))
+
+(deftest datahike-config-test
+  (testing "datahike-config handles nil, blank, and :memory paths"
+    (is (= :memory (get-in (db/datahike-config ":memory") [:store :backend])))
+    (is (= "/var/lib/datahike/journal"
+           (get-in (db/datahike-config nil) [:store :path])))
+    (is (= "/var/lib/datahike/journal"
+           (get-in (db/datahike-config "") [:store :path])))
+    (is (= "/custom/path"
+           (get-in (db/datahike-config "/custom/path") [:store :path])))))
