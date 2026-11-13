@@ -76,6 +76,20 @@
       (is (= ["oatmeal" "salad"]
              (sut/all-known-values sample-entries :food))))
 
+    (testing "recent-values, common-values, and all-known-values exclude blank/nil values"
+      (let [entries-with-blanks [{:id "1"
+                                  :timestamp "2026-09-01T10:00:00Z"
+                                  :data {:food "oatmeal" :fasting nil :tag "" :notes "   "}}
+                                 {:id "2"
+                                  :timestamp "2026-09-02T10:00:00Z"
+                                  :data {:food "" :fasting nil :tag "vip" :notes ""}}]]
+        (is (= ["oatmeal"] (sut/recent-values entries-with-blanks :food)))
+        (is (= [] (sut/recent-values entries-with-blanks :fasting)))
+        (is (= ["vip"] (sut/recent-values entries-with-blanks :tag)))
+        (is (= ["oatmeal"] (sut/common-values entries-with-blanks :food)))
+        (is (= [] (sut/common-values entries-with-blanks :fasting)))
+        (is (= ["vip"] (sut/all-known-values entries-with-blanks :tag)))))
+
     (testing "blended-keys blends recent and frequently used keys"
       (let [blended (sut/blended-keys sample-entries)]
         (is (vector? blended))

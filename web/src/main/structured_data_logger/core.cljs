@@ -109,18 +109,22 @@
     (vec (distinct (concat interleaved r c)))))
 
 (defn recent-values
-  "Returns values for key k ordered by most recent occurrence."
+  "Returns non-blank values for key k ordered by most recent occurrence."
   [entries k]
   (let [sorted (sort-by :timestamp #(compare %2 %1) entries)]
     (->> sorted
          (keep (fn [e] (get-in e [:data k])))
+         (remove (fn [v] (or (nil? v) (str/blank? (str v)))))
          distinct
          vec)))
 
 (defn common-values
-  "Returns values for key k ordered by frequency of occurrence."
+  "Returns non-blank values for key k ordered by frequency of occurrence."
   [entries k]
-  (let [freqs (frequencies (keep (fn [e] (get-in e [:data k])) entries))]
+  (let [valid-vals (->> entries
+                        (keep (fn [e] (get-in e [:data k])))
+                        (remove (fn [v] (or (nil? v) (str/blank? (str v))))))
+        freqs (frequencies valid-vals)]
     (->> freqs
          (sort-by (fn [[v cnt]] [(- cnt) (str v)]))
          (map first)
@@ -132,7 +136,7 @@
   (mapv name (recent-keys entries)))
 
 (defn all-known-values
-  "Returns all distinct string representations of values for a key."
+  "Returns all distinct string representations of non-blank values for a key."
   [entries k]
   (let [kw (if (keyword? k) k (keyword (str/trim (str k))))]
     (mapv str (recent-values entries kw))))
