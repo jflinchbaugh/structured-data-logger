@@ -58,18 +58,6 @@
       k-str
       (str k-str ": " v-str))))
 
-(defn confirm-dialog
-  "Prompts the user with a confirmation dialog. Defaults to js/window.confirm."
-  [msg]
-  (if (exists? js/window)
-    (js/confirm msg)
-    false))
-
-(defn confirm-delete?
-  "Asks confirmation to delete an entry."
-  [_entry]
-  (confirm-dialog "Are you sure you want to delete this entry?"))
-
 (def close-symbol "\u2715")
 (def gps-symbol "\u2316")
 
@@ -714,28 +702,46 @@
 
 (defnc entry-list-item
   [{:keys [entry on-edit on-delete]}]
-  (d/div
-   {:class "entry-list-item"}
-   (d/div
-    {:class "entry-header"}
-    (d/span (core/format-local-datetime (:timestamp entry)))
+  (let [[confirming-delete? set-confirming-delete!] (hooks/use-state false)
+        delete-btn-ref (hooks/use-ref nil)]
+    (hooks/use-effect
+     [confirming-delete?]
+     (when (and confirming-delete? (exists? js/document))
+       (let [on-doc-click
+             (fn [e]
+               (let [btn (.-current delete-btn-ref)]
+                 (when-not (and btn (.contains btn (.-target e)))
+                   (set-confirming-delete! false))))]
+         (.addEventListener js/document "click" on-doc-click)
+         #(.removeEventListener js/document "click" on-doc-click))))
     (d/div
-     (d/a
-      {:class "btn btn-secondary btn-small btn-space-right"
-       :href "#new"
-       :on-click #(when on-edit (on-edit entry))}
-      "Edit")
-     (d/button
-      {:class "btn btn-danger btn-small"
-       :on-click #(when on-delete (on-delete entry))}
-      "Delete")))
-   (d/div {:class "entry-desc"} (:description entry))
-   (when (seq (:data entry))
+     {:class "entry-list-item"}
      (d/div
-      {:class "entry-kv-list"}
-      (for [[k v] (:data entry)]
-        (d/span {:key (str k) :class "badge"}
-                ($ format-kv-component {:k k :v v})))))))
+      {:class "entry-header"}
+      (d/span (core/format-local-datetime (:timestamp entry)))
+      (d/div
+       (d/a
+        {:class "btn btn-secondary btn-small btn-space-right"
+         :href "#new"
+         :on-click #(when on-edit (on-edit entry))}
+        "Edit")
+       (d/button
+        {:ref delete-btn-ref
+         :class "btn btn-danger btn-small"
+         :on-click (fn []
+                     (if confirming-delete?
+                       (do
+                         (set-confirming-delete! false)
+                         (when on-delete (on-delete entry)))
+                       (set-confirming-delete! true)))}
+        (if confirming-delete? "Really?" "Delete"))))
+     (d/div {:class "entry-desc"} (:description entry))
+     (when (seq (:data entry))
+       (d/div
+        {:class "entry-kv-list"}
+        (for [[k v] (:data entry)]
+          (d/span {:key (str k) :class "badge"}
+                  ($ format-kv-component {:k k :v v}))))))))
 
 
 (defnc entries-list-view
@@ -927,20 +933,19 @@
 
           delete-entry!
           (fn [entry]
-            (when (confirm-delete? entry)
-              (let [clean-entries (filterv core/valid-entry? (or entries []))
-                    id (:id entry)
-                    del-op (when (and (string? id) (not (str/blank? id)))
-                             (core/create-delete-op id))
-                    updated-entries (if del-op
-                                      (core/apply-transaction
-                                       clean-entries del-op)
-                                      clean-entries)
-                    updated-ops (if del-op
-                                  (conj pending-ops del-op)
-                                  pending-ops)]
-                (save-local! updated-entries updated-ops)
-                (js/setTimeout do-sync! 50))))]
+            (let [clean-entries (filterv core/valid-entry? (or entries []))
+                  id (:id entry)
+                  del-op (when (and (string? id) (not (str/blank? id)))
+                           (core/create-delete-op id))
+                  updated-entries (if del-op
+                                    (core/apply-transaction
+                                     clean-entries del-op)
+                                    clean-entries)
+                  updated-ops (if del-op
+                                (conj pending-ops del-op)
+                                pending-ops)]
+              (save-local! updated-entries updated-ops)
+              (js/setTimeout do-sync! 50)))]
 
       ;; 1. Sync on mount / startup
       (hooks/use-effect

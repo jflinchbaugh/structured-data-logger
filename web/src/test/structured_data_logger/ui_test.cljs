@@ -27,20 +27,6 @@
     (is (= "120/80" (ui/parse-val "120/80")))
     (is (= "hello world" (ui/parse-val "  hello world  ")))))
 
-(deftest confirm-delete-test
-  (testing (str "confirm-delete? prompts using window.confirm and returns "
-                "its boolean result")
-    (let [prompts (atom [])]
-      (with-redefs [ui/confirm-dialog (fn [msg]
-                                        (swap! prompts conj msg)
-                                        true)]
-        (is (true? (ui/confirm-delete?
-                    {:description "Blood pressure reading"})))
-        (is (= ["Are you sure you want to delete this entry?"] @prompts)))
-      (with-redefs [ui/confirm-dialog (fn [_] false)]
-        (is (false? (ui/confirm-delete?
-                     {:description "Blood pressure reading"})))))))
-
 (deftest format-kv-test
   (testing "format-kv displays key and value with colon when value is present"
     (is (= "food: oatmeal" (ui/format-kv :food "oatmeal")))
@@ -137,7 +123,18 @@
         (is (some? (.getByText screen "fasting")))
         (.click fire-event (.getByText screen "Edit"))
         (is (= sample @edited))
+        ;; First click swaps button text to "Really?" without deleting
         (.click fire-event (.getByText screen "Delete"))
+        (is (nil? @deleted))
+        (is (some? (.getByText screen "Really?")))
+        ;; Clicking elsewhere resets "Really?" back to "Delete"
+        (.click fire-event (.getByText screen "Morning run"))
+        (is (nil? @deleted))
+        (is (nil? (.queryByText screen "Really?")))
+        (is (some? (.getByText screen "Delete")))
+        ;; Second click on "Really?" confirms deletion
+        (.click fire-event (.getByText screen "Delete"))
+        (.click fire-event (.getByText screen "Really?"))
         (is (= sample @deleted))
         (finally
           ((js/goog.object.get view "unmount")))))))
