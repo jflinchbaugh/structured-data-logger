@@ -244,7 +244,7 @@
     "dump"
     (let [target (or arg1
                      (System/getenv "DATAHIKE_PATH")
-                     "/var/lib/datahike/journal")]
+                     "/var/lib/datahike/journal.sqlite")]
       (connect-db! target)
       (dump-db!)
       (disconnect-db!)
@@ -253,7 +253,7 @@
     "load"
     (let [target (or arg1
                      (System/getenv "DATAHIKE_PATH")
-                     "/var/lib/datahike/journal")]
+                     "/var/lib/datahike/journal.sqlite")]
       (connect-db! target)
       (load-db! *in*)
       (disconnect-db!)

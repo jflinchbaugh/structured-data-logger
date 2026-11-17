@@ -23,7 +23,7 @@
     {:store {:backend :jdbc
              :dbtype "sqlite"
              :dbname (if (str/blank? path)
-                       "/var/lib/datahike/journal"
+                       "/var/lib/datahike/journal.sqlite"
                        path)
              :id datahike-store-id}
      :schema-flexibility :read

@@ -89,9 +89,9 @@
     (is (= :memory (get-in (db/datahike-config ":memory") [:store :backend])))
     (is (= :jdbc (get-in (db/datahike-config nil) [:store :backend])))
     (is (= "sqlite" (get-in (db/datahike-config nil) [:store :dbtype])))
-    (is (= "/var/lib/datahike/journal"
+    (is (= "/var/lib/datahike/journal.sqlite"
            (get-in (db/datahike-config nil) [:store :dbname])))
-    (is (= "/var/lib/datahike/journal"
+    (is (= "/var/lib/datahike/journal.sqlite"
            (get-in (db/datahike-config "") [:store :dbname])))
     (is (= "/custom/path"
            (get-in (db/datahike-config "/custom/path") [:store :dbname])))))

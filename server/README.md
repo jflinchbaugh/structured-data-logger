@@ -27,7 +27,7 @@ clj -M:run-m 6000
 Run connected to Datahike (SQLite persistence):
 
 ```bash
-clj -M:run-m 6000 /path/to/datahike.sqlite
+clj -M:run-m 6000 /path/to/datahike/journal.sqlite
 ```
 
 ### Running Tests
@@ -149,13 +149,13 @@ container image provides `/usr/local/bin/dump-db` and
 ```bash
 # Locally:
 java -jar target/structured-data-logger-server-standalone.jar \
-  dump /var/lib/datahike/journal > backup.edn
+  dump /var/lib/datahike/journal.sqlite > backup.edn
 
 # Via Podman container:
 podman run --rm \
   -v structured-data-logger-datahike-data:/var/lib/datahike \
   localhost/structured-data-logger-server:latest \
-  dump-db /var/lib/datahike/journal > backup.edn
+  dump-db /var/lib/datahike/journal.sqlite > backup.edn
 ```
 
 #### Load / Restore Database from EDN
@@ -163,13 +163,13 @@ podman run --rm \
 ```bash
 # Locally:
 java -jar target/structured-data-logger-server-standalone.jar \
-  load /var/lib/datahike/journal < backup.edn
+  load /var/lib/datahike/journal.sqlite < backup.edn
 
 # Via Podman container:
 podman run --rm -i \
   -v structured-data-logger-datahike-data:/var/lib/datahike \
   localhost/structured-data-logger-server:latest \
-  load-db /var/lib/datahike/journal < backup.edn
+  load-db /var/lib/datahike/journal.sqlite < backup.edn
 ```
 
 ### 4. Install as a Systemd User Quadlet
