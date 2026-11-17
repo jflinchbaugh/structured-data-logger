@@ -397,4 +397,34 @@
       (try
         (is (some? (.getByText screen "food: oatmeal")))
         (finally
+          ((js/goog.object.get view "unmount"))))))
+
+  (testing "chip-scale-class scales from chip-scale-1 down to chip-scale-5"
+    (is (= "chip-scale-1" (ui/chip-scale-class 0 5)))
+    (is (= "chip-scale-2" (ui/chip-scale-class 1 5)))
+    (is (= "chip-scale-3" (ui/chip-scale-class 2 5)))
+    (is (= "chip-scale-4" (ui/chip-scale-class 3 5)))
+    (is (= "chip-scale-5" (ui/chip-scale-class 4 5))))
+
+  (testing "suggested key chips span from larger to smaller scale classes"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          entries [{:id "1" :timestamp "2026-09-01T10:00:00Z"
+                    :description "test 1" :data {:alpha 1 :beta 2 :gamma 3}}
+                   {:id "2" :timestamp "2026-09-02T10:00:00Z"
+                    :description "test 2" :data {:alpha 1 :beta 2}}]
+          view (render ($ ui/entry-add-field
+                          {:all-entries entries
+                           :new-key-name ""
+                           :set-new-key-name (fn [_])
+                           :new-key-val ""
+                           :set-new-key-val (fn [_])
+                           :on-add (fn [])}))]
+      (try
+        (let [chip-first (.getByText screen "alpha")
+              chip-last (.getByText screen "gamma")]
+          (is (.contains (.-classList chip-first) "chip-scale-1"))
+          (is (.contains (.-classList chip-last) "chip-scale-5")))
+        (finally
           ((js/goog.object.get view "unmount")))))))

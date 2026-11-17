@@ -298,6 +298,17 @@
                 :on-click #(on-remove idx)}
                close-symbol))))
 
+(defn chip-scale-class
+  "Returns CSS class name scaling from chip-scale-1 (largest) down to
+  chip-scale-5 (smallest) based on 0-based idx and total count."
+  [idx total]
+  (let [tier (if (<= total 1)
+               1
+               (inc (min 4 (int (Math/round (* (/ (double idx)
+                                                  (dec total))
+                                               4))))))]
+    (str "chip-scale-" tier)))
+
 (defnc entry-add-field [{:keys [all-entries
                               new-key-name
                               set-new-key-name
@@ -370,19 +381,22 @@
        "+ Add"))
 
      (when (seq blended-k)
-       (d/div
-        (d/span {:class "field-suggestion-label"}
-                "Suggested keys:")
-        (d/div
-         {:class "chip-row"}
-         (for [k (take 20 blended-k)]
-           (let [k-str (core/to-kebab-case (name k))]
-             (d/span {:key (str "key-" k)
-                      :class "chip"
-                      :on-click (fn []
-                                  (set-new-key-name k-str)
-                                  (focus-val-input))}
-                     k-str))))))
+       (let [suggested (vec (take 20 blended-k))
+             total (count suggested)]
+         (d/div
+          (d/span {:class "field-suggestion-label"}
+                  "Suggested keys:")
+          (d/div
+           {:class "chip-row suggested-keys"}
+           (for [[idx k] (map-indexed vector suggested)]
+             (let [k-str (core/to-kebab-case (name k))
+                   scale-cls (chip-scale-class idx total)]
+               (d/span {:key (str "key-" k)
+                        :class (str "chip " scale-cls)
+                        :on-click (fn []
+                                    (set-new-key-name k-str)
+                                    (focus-val-input))}
+                       k-str)))))))
 
      (when (not (str/blank? new-key-name))
        (let [kw (keyword (str/trim new-key-name))

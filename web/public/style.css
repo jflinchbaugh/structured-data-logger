@@ -248,6 +248,30 @@ input:focus, select:focus, textarea:focus {
   border-color: #c7d2fe;
 }
 
+.chip-row.suggested-keys {
+  align-items: center;
+}
+
+.chip.chip-scale-1 {
+  font-size: 1.15rem;
+}
+
+.chip.chip-scale-2 {
+  font-size: 1.05rem;
+}
+
+.chip.chip-scale-3 {
+  font-size: 0.95rem;
+}
+
+.chip.chip-scale-4 {
+  font-size: 0.85rem;
+}
+
+.chip.chip-scale-5 {
+  font-size: 0.75rem;
+}
+
 .badge {
   display: inline-block;
   padding: 2px 8px;
