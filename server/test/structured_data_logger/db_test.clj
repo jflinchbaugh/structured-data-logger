@@ -22,6 +22,7 @@
                  (db/storage-summary)))
           ;; Disconnect and reconnect to verify persistence and structured EAV
           (db/disconnect!)
+          (is (.exists (java.io.File. tmp-dir)))
           (db/connect! tmp-dir)
           (is (db/journal-exists? "user-dh"))
           (let [j (db/get-journal "user-dh")]
@@ -46,11 +47,10 @@
         (is (not (db/journal-exists? "user-dh")))
         (finally
           (db/disconnect!)
-          (try
-            (let [f (java.io.File. tmp-dir)]
-              (run! #(io/delete-file % true)
-                    (reverse (file-seq f))))
-            (catch Exception _ nil)))))))
+          (doseq [suffix ["" "-wal" "-shm" "-journal"]]
+            (try
+              (io/delete-file (java.io.File. (str tmp-dir suffix)) true)
+              (catch Exception _ nil))))))))
 
 (deftest dump-and-load-test
   (testing "dump-db and load-db roundtrip journals"
@@ -78,20 +78,20 @@
         (finally
           (db/disconnect!)
           (when (.exists backup-file) (.delete backup-file))
-          (run! (fn [d]
-                  (try
-                    (let [f (java.io.File. d)]
-                      (run! #(io/delete-file % true)
-                            (reverse (file-seq f))))
-                    (catch Exception _ nil)))
-                [dh-dir-1 dh-dir-2]))))))
+          (doseq [d [dh-dir-1 dh-dir-2]
+                  suffix ["" "-wal" "-shm" "-journal"]]
+            (try
+              (io/delete-file (java.io.File. (str d suffix)) true)
+              (catch Exception _ nil))))))))
 
 (deftest datahike-config-test
-  (testing "datahike-config handles nil, blank, and :memory paths"
+  (testing "datahike-config handles nil, blank, and :memory paths with sqlite"
     (is (= :memory (get-in (db/datahike-config ":memory") [:store :backend])))
+    (is (= :jdbc (get-in (db/datahike-config nil) [:store :backend])))
+    (is (= "sqlite" (get-in (db/datahike-config nil) [:store :dbtype])))
     (is (= "/var/lib/datahike/journal"
-           (get-in (db/datahike-config nil) [:store :path])))
+           (get-in (db/datahike-config nil) [:store :dbname])))
     (is (= "/var/lib/datahike/journal"
-           (get-in (db/datahike-config "") [:store :path])))
+           (get-in (db/datahike-config "") [:store :dbname])))
     (is (= "/custom/path"
-           (get-in (db/datahike-config "/custom/path") [:store :path])))))
+           (get-in (db/datahike-config "/custom/path") [:store :dbname])))))

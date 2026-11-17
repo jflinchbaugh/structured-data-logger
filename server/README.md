@@ -10,7 +10,7 @@ and Datahike.
   merging changes, and document storage.
 - **Authentication**: HTTP Basic Auth with hashed user credentials.
 - **Database**: In-memory storage with optional continuous sync to Datahike
-  (durable Datalog file storage).
+  (durable Datalog SQLite storage).
 - **Containerization**: Containerfile and Podman Kubernetes Quadlet
   definitions for container deployments.
 
@@ -24,10 +24,10 @@ Run on port 6000 with in-memory storage (press `Ctrl+C` to stop):
 clj -M:run-m 6000
 ```
 
-Run connected to Datahike (file-based persistence):
+Run connected to Datahike (SQLite persistence):
 
 ```bash
-clj -M:run-m 6000 /path/to/datahike-storage
+clj -M:run-m 6000 /path/to/datahike.sqlite
 ```
 
 ### Running Tests

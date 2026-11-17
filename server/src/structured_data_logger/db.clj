@@ -1,5 +1,6 @@
 (ns structured-data-logger.db
   (:require [datahike.api :as d]
+            [konserve-jdbc.core]
             [buddy.hashers :as hashers]
             [clojure.edn :as edn]
             [clojure.string :as str]
@@ -19,10 +20,11 @@
      :schema-flexibility :read
      :value-caps :default
      :keep-history? false}
-    {:store {:backend :file
-             :path (if (str/blank? path)
-                     "/var/lib/datahike/journal"
-                     path)
+    {:store {:backend :jdbc
+             :dbtype "sqlite"
+             :dbname (if (str/blank? path)
+                       "/var/lib/datahike/journal"
+                       path)
              :id datahike-store-id}
      :schema-flexibility :read
      :value-caps :default
