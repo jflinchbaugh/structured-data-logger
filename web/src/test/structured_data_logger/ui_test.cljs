@@ -440,6 +440,28 @@
       (is (= [true false] @calls))
       (is (= "37.774900, -122.419400" @result)))))
 
+  (testing "entry-form has Save button in header row and no Cancel button"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          view (render ($ ui/entry-form
+                          {:initial-entry nil
+                           :all-entries []
+                           :on-save (fn [_])
+                           :on-cancel (fn [])}))]
+      (try
+        (let [container (.-container view)
+              header-row (.querySelector container ".card-header-row")
+              save-btn (when header-row
+                         (.querySelector header-row "button"))
+              cancel-btn (.queryByText screen "Cancel")]
+          (is (some? header-row))
+          (is (some? save-btn))
+          (is (= "Save Entry" (when save-btn (.-textContent save-btn))))
+          (is (nil? cancel-btn)))
+        (finally
+          ((js/goog.object.get view "unmount"))))))
+
 
 (deftest format-kv-component-test
   (testing "format-kv-component renders a link for location keys"

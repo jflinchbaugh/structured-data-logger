@@ -445,12 +445,43 @@
             (set-kv-list (conj kv-list {:key (core/to-kebab-case new-key-name)
                                         :val (str/trim new-key-val)}))
             (set-new-key-name "")
-            (set-new-key-val "")))]
+            (set-new-key-val "")))
+        handle-save
+        (fn []
+          (let [pending-pair (when (not (str/blank? new-key-name))
+                               {:key (core/to-kebab-case new-key-name)
+                                :val (str/trim new-key-val)})
+                effective-kv (if pending-pair
+                               (conj kv-list pending-pair)
+                               kv-list)
+                data-map (into {}
+                               (for [{:keys [key val]} effective-kv
+                                     :let [k-str (core/to-kebab-case key)]
+                                     :when (not (str/blank? k-str))]
+                                 [(keyword k-str) (parse-val val)]))
+                desc (str/trim (or description ""))]
+            (if (and (str/blank? desc) (empty? data-map))
+              (set-error-msg
+               "Please provide a description or at least one field.")
+              (let [entry (core/create-entry
+                           {:id (:id initial-entry)
+                            :timestamp
+                            (core/from-local-datetime-input timestamp)
+                            :description desc
+                            :data data-map})]
+                (set-error-msg nil)
+                (on-save entry)))))]
 
     (d/div
      {:class "card"}
-     (d/h3 {:class "card-title"}
-           (if initial-entry "Edit Journal Entry" "New Journal Entry"))
+     (d/div
+      {:class "card-header-row"}
+      (d/h3 {:class "card-title card-title-inline"}
+            (if initial-entry "Edit Journal Entry" "New Journal Entry"))
+      (d/button
+       {:class "btn btn-primary"
+        :on-click handle-save}
+       "Save Entry"))
 
      (d/datalist
       {:id "known-keys-datalist"}
@@ -505,42 +536,7 @@
 
      (when error-msg
        (d/div {:class "form-error"}
-              error-msg))
-
-     (d/div
-      {:class "form-actions"}
-      (d/button
-       {:class "btn btn-primary"
-        :on-click
-        (fn []
-          (let [pending-pair (when (not (str/blank? new-key-name))
-                               {:key (core/to-kebab-case new-key-name)
-                                :val (str/trim new-key-val)})
-                effective-kv (if pending-pair
-                               (conj kv-list pending-pair)
-                               kv-list)
-                data-map (into {}
-                               (for [{:keys [key val]} effective-kv
-                                     :let [k-str (core/to-kebab-case key)]
-                                     :when (not (str/blank? k-str))]
-                                 [(keyword k-str) (parse-val val)]))
-                desc (str/trim (or description ""))]
-            (if (and (str/blank? desc) (empty? data-map))
-              (set-error-msg
-               "Please provide a description or at least one field.")
-              (let [entry (core/create-entry
-                           {:id (:id initial-entry)
-                            :timestamp
-                            (core/from-local-datetime-input timestamp)
-                            :description desc
-                            :data data-map})]
-                (set-error-msg nil)
-                (on-save entry)))))}
-       "Save Entry")
-      (when on-cancel
-        (d/button {:class "btn btn-secondary"
-                   :on-click on-cancel}
-                  "Cancel"))))))
+              error-msg)))))
 
 (defnc dashboard-view [{:keys [entries]}]
   (let [saved-code (or (ls/get-item :dashboard-code)
