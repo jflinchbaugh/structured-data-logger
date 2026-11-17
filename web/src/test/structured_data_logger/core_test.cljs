@@ -100,7 +100,20 @@
       (let [blended (sut/blended-keys sample-entries)]
         (is (vector? blended))
         (is (= (set [:food :pills :calories :mood]) (set blended)))
-        (is (= :food (first blended)))))))
+        (is (= :food (first blended)))))
+
+    (testing "filter-entries-by-keys filters entries by matching keys"
+      (let [entries [{:id "1" :data {:pills "aspirin"}}
+                     {:id "2" :data {:food "apple"}}
+                     {:id "3" :data {:mileage 10}}]]
+        (is (= entries (sut/filter-entries-by-keys entries #{})))
+        (is (= entries (sut/filter-entries-by-keys entries [])))
+        (is (= [(:id (first entries))]
+               (mapv :id (sut/filter-entries-by-keys entries #{:pills}))))
+        (is (= ["1" "2"]
+               (mapv :id (sut/filter-entries-by-keys entries
+                                                     #{"pills" "food"}))))
+        (is (= [] (sut/filter-entries-by-keys entries #{:unknown})))))))
 
 (deftest stats-and-sci-test
   (let [numbers [10 20 30 40 50]]

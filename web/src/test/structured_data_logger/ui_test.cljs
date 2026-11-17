@@ -173,6 +173,75 @@
         (finally
           ((js/goog.object.get view "unmount"))))))
 
+  (testing "EntriesListView filters entries by selected key chips"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          fire-event (.-fireEvent rtl)
+          entries [{:id "1"
+                    :timestamp "2026-09-01T10:00:00Z"
+                    :description "Entry with pills"
+                    :data {:pills "aspirin"}}
+                   {:id "2"
+                    :timestamp "2026-09-02T10:00:00Z"
+                    :description "Entry with food"
+                    :data {:food "apple"}}
+                   {:id "3"
+                    :timestamp "2026-09-03T10:00:00Z"
+                    :description "Entry with mileage"
+                    :data {:mileage 50}}]
+          view (render ($ ui/entries-list-view {:entries entries}))]
+      (try
+        (let [all-chip (.getByText screen "All")
+              pills-chip (.getByText screen "pills")
+              food-chip (.getByText screen "food")]
+          (is (.contains (.-classList all-chip) "active"))
+          (is (some? (.getByText screen "Entry with pills")))
+          (is (some? (.getByText screen "Entry with food")))
+          (is (some? (.getByText screen "Entry with mileage")))
+          ;; Filter by pills
+          (.click fire-event pills-chip)
+          (is (not (.contains (.-classList all-chip) "active")))
+          (is (.contains (.-classList pills-chip) "active"))
+          (is (some? (.getByText screen "Entry with pills")))
+          (is (nil? (.queryByText screen "Entry with food")))
+          (is (nil? (.queryByText screen "Entry with mileage")))
+          ;; Multi-select: toggle food as well (OR)
+          (.click fire-event food-chip)
+          (is (.contains (.-classList food-chip) "active"))
+          (is (some? (.getByText screen "Entry with pills")))
+          (is (some? (.getByText screen "Entry with food")))
+          (is (nil? (.queryByText screen "Entry with mileage")))
+          ;; Reset by clicking "All"
+          (.click fire-event all-chip)
+          (is (.contains (.-classList all-chip) "active"))
+          (is (not (.contains (.-classList pills-chip) "active")))
+          (is (some? (.getByText screen "Entry with mileage"))))
+        (finally
+          ((js/goog.object.get view "unmount"))))))
+
+  (testing "EntriesListView orders filter key chips using blended-keys"
+    (let [rtl (js/require "@testing-library/react")
+          render (.-render rtl)
+          screen (.-screen rtl)
+          entries [{:id "1" :timestamp "2026-09-01T10:00:00Z"
+                    :data {:calories 200}}
+                   {:id "2" :timestamp "2026-09-02T10:00:00Z"
+                    :data {:calories 300}}
+                   {:id "3" :timestamp "2026-09-03T10:00:00Z"
+                    :data {:food "oatmeal" :pills "aspirin"}}]
+          view (render ($ ui/entries-list-view {:entries entries}))]
+      (try
+        (let [container (.-container view)
+              chips (array-seq
+                     (.querySelectorAll
+                      container
+                      ".entry-filter-bar .chip"))
+              chip-texts (mapv (fn [c] (.-textContent c)) chips)]
+          (is (= ["All" "food" "calories" "pills"] chip-texts)))
+        (finally
+          ((js/goog.object.get view "unmount"))))))
+
   (testing "AppRoot displays entries count in the Entries nav tab button"
     (let [rtl (js/require "@testing-library/react")
           render (.-render rtl)

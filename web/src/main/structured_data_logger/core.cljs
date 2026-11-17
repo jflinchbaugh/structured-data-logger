@@ -144,6 +144,25 @@
   (let [kw (if (keyword? k) k (keyword (str/trim (str k))))]
     (mapv str (recent-values entries kw))))
 
+(defn filter-entries-by-keys
+  "Filters entries to only those containing at least one of the selected keys.
+  If selected-keys is empty, returns all entries unchanged."
+  [entries selected-keys]
+  (if (empty? selected-keys)
+    (vec (or entries []))
+    (let [key-set (set (map (fn [k]
+                              (to-kebab-case
+                               (if (keyword? k)
+                                 (name k)
+                                 (str/trim (str k)))))
+                            selected-keys))]
+      (filterv (fn [entry]
+                 (let [entry-keys
+                       (set (map (fn [k] (to-kebab-case (name k)))
+                                 (keys (:data entry))))]
+                   (some (fn [k] (contains? entry-keys k)) key-set)))
+               (or entries [])))))
+
 (defn average
   "Computes average of a collection of numbers."
   [coll]
@@ -340,6 +359,7 @@
                         'common-values common-values
                         'all-known-keys all-known-keys
                         'all-known-values all-known-values
+                        'filter-entries-by-keys filter-entries-by-keys
                         'to-kebab-case to-kebab-case
                         'parse-coordinates parse-coordinates
                         'format-coordinates format-coordinates

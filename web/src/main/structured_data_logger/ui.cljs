@@ -760,19 +760,49 @@
 
 (defnc entries-list-view
   [{:keys [entries on-edit on-delete]}]
-  (let [clean-entries (core/sort-entries-descending entries)]
+  (let [[selected-keys set-selected-keys] (hooks/use-state #{})
+        clean-entries (core/sort-entries-descending entries)
+        all-k (mapv name (core/blended-keys clean-entries))
+        filtered-entries (core/filter-entries-by-keys
+                          clean-entries
+                          selected-keys)]
     (d/div
      {:id "entries" :class "card"}
+     (when (seq all-k)
+       (d/div
+        {:class "entry-filter-bar"}
+        (d/span {:class "entry-filter-label"} "Filter by key:")
+        (d/div
+         {:class "chip-row"}
+         (d/span
+          {:class (str "chip" (when (empty? selected-keys) " active"))
+           :on-click (fn [] (set-selected-keys #{}))}
+          "All")
+         (for [k all-k]
+           (let [k-str (core/to-kebab-case k)
+                 active? (contains? selected-keys k-str)]
+             (d/span
+              {:key (str "filter-key-" k)
+               :class (str "chip" (when active? " active"))
+               :on-click (fn []
+                           (set-selected-keys
+                            (if active?
+                              (disj selected-keys k-str)
+                              (conj selected-keys k-str))))}
+              k-str))))))
      (if (empty? clean-entries)
        (d/p {:class "entries-empty-notice"}
             (str "No journal entries recorded yet. "
                  "Click '+ New' to create one."))
-       (for [entry clean-entries]
-         ($ entry-list-item
-            {:key (:id entry)
-             :entry entry
-             :on-edit on-edit
-             :on-delete on-delete}))))))
+       (if (empty? filtered-entries)
+         (d/p {:class "entries-empty-notice"}
+              "No entries match the selected key filters.")
+         (for [entry filtered-entries]
+           ($ entry-list-item
+              {:key (:id entry)
+               :entry entry
+               :on-edit on-edit
+               :on-delete on-delete})))))))
 
 (defnc app-root []
   (let [[active-tab set-active-tab] (hooks/use-state current-window-tab)
