@@ -375,7 +375,7 @@
                 "Suggested keys:")
         (d/div
          {:class "chip-row"}
-         (for [k (take 10 blended-k)]
+         (for [k (take 20 blended-k)]
            (let [k-str (core/to-kebab-case (name k))]
              (d/span {:key (str "key-" k)
                       :class "chip"
