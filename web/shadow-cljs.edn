@@ -3,13 +3,13 @@
  ["src/main"
   "src/test"]
  :dependencies
- [[lilactown/helix "0.2.2"]
-  [org.babashka/sci "0.15.59"]
+ [[lilactown/helix "0.3.0"]
+  [org.babashka/sci "0.15.60"]
   [com.taoensso/telemere "1.4.0"]
-  [tick/tick "1.0.2"]
+  [tick/tick "1.0.3"]
   [cljs-http "0.1.49"]
   [binaryage/devtools "1.0.7"]
-  [cider/cider-nrepl "0.62.2"]
+  [cider/cider-nrepl "0.64.1"]
   [refactor-nrepl "3.14.0"]]
  :dev-http
  {3000
