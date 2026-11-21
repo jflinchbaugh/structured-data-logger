@@ -5,6 +5,8 @@ RUN apt-get update -y \
     && apt-get install -y openjdk-25-jre-headless time \
     && apt-get autoremove -y
 
+RUN java -version
+
 RUN mkdir -p /app
 
 WORKDIR /app

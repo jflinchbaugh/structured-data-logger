@@ -14,7 +14,7 @@ target/.uberjar-built: $(SRC_FILES)
 	touch target/.uberjar-built
 
 container: test target/.uberjar-built Containerfile
-	podman build -t structured-data-logger-server:latest .
+	podman build --no-cache --pull -t structured-data-logger-server:latest .
 
 clean:
 	clj -T:build clean
